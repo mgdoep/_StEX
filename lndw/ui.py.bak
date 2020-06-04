@@ -1,0 +1,138 @@
+import tkinter as tk
+from time import time, sleep
+from arduino-helper import ArduinoHelper
+import drawfkt
+
+
+root = tk.Tk()
+
+#Dimensionen bestimmen
+cw = root.winfo_screenwidth() #Breite der Diagrammfläche
+ch = root.winfo_screenheight()-50 # Höhe der Diagrammfläche
+
+#Kalibrierungsdatei lesen und Werte festlegen
+noe = -1 #Wie viele Einheiten auf y-Achse
+scalemin = -1 #Ort des 0-Punkts der Skala vor dem Sensor
+scalemax = -1 #Ort des Maximal-Punkts auf der Skala vor dem Sensor
+arduinoport = "" #Portname des Arduinoports
+
+file = open("calib.cal", "r")
+for line in file.readlines():
+    l = line.split(" ")
+    if l[0] == "port":
+        arduinoport = l[1]
+    elif l[0] == "steps":
+        noe = int(l[1])
+    elif l[0] == "min":
+        scalemin = int(l[1])
+    elif l[0] == "max":
+        scalemax = int(l[1])
+
+t = 10 #Zeit in s
+ey = round(ch-100)/noe-5 #Länge einer Einheit auf der y-Achse
+ex = round(cw-100)/t-2 #Länge einer Einheit auf der x-Achse
+
+arduino = ArduinoHelper(arduinoport, noe, scalemin, scalemax)
+
+def disable_event():
+    pass
+
+def close_program(event):
+    root.destroy()
+
+def getval(ov):
+    randomValue = random()
+    if (randomValue + ov) > 5.0:
+        return round(ov - randomValue*3.0, 2)
+    return round(ov + randomValue, 2)
+
+def getKoord(k, protocol):
+    if protocol:
+        positions.append(k)
+    return (50+round(k[0]*ex), ch-50-round(k[1]*ey))
+
+def countdown(l):
+    secs = canvas.create_text(cw/2, ch/2, text=str(l), font=("Arial", 80, "bold"), fill="red")
+    canvas.update()
+    for i in range(0, l):
+        canvas.itemconfigure(secs, text=str(l-i))
+        canvas.update()
+        sleep(1)
+    canvas.delete(secs)
+    sleep(0.2)
+
+def lauflos():
+    yval = round(random() * 5, 2)
+    nkoord = getKoord((0, yval), True)
+    okoord = nkoord
+    pos = canvas.create_oval(okoord[0] - 4, okoord[1] - 4, okoord[0] + 4, okoord[1] + 4, fill="blue")
+
+    countdown(5)
+
+    starttime = time()
+    currenttime = time()
+
+    while currenttime - starttime < t:
+        currenttime = time()
+        okoord = nkoord
+        yval = getval(yval)
+        nkoord = getKoord((currenttime - starttime, yval), True)
+        canvas.move(pos, nkoord[0] - okoord[0], nkoord[1] - okoord[1])
+        graph.append(canvas.create_line(okoord[0], okoord[1], nkoord[0], nkoord[1], fill="blue", width=3))
+        canvas.pack()
+        canvas.update()
+        sleep(0.02)
+    canvas.delete(pos)
+
+def loescheVerlauf():
+    for i in range(len(graph)):
+        canvas.delete(graph[i])
+
+def drawTargetFunction():
+    for i in range(len(targetfunction)-1):
+        p1 = getKoord(targetfunction[i], False)
+        p2 = getKoord(targetfunction[i+1], False)
+        tarfunc_graph.append(canvas.create_line(p1[0], p1[1], p2[0], p2[1], fill="#BBBBBB", width=4))
+
+targetfunction = drawfkt.getFunktion("f1")
+
+root.title("Funktionen laufen")
+
+canvas = tk.Canvas(root, bg="white", width=cw, height=ch)
+canvas.pack()
+
+
+# Diagramm initialisieren
+sysItems = []
+sysItems.append(canvas.create_line(50, 50, 50, ch-50, fill="black", width=2))
+sysItems.append(canvas.create_line(50, ch-50, cw-50, ch-50, fill="black", width=2))
+
+for i in range(1,noe+1):
+    sysItems.append(canvas.create_line(cw-50, ch-50-i*ey, 45, ch-50-i*ey, fill="#aaaaaa", width=1, dash=(2,2)))
+    sysItems.append(canvas.create_text(30, ch-50-i*ey, text=str(i), font=("Arial", 20)))
+
+for i in range(1,t+1):
+    sysItems.append(canvas.create_line(50+i*ex, 50, 50+i*ex, ch-50, fill="#aaaaaa", width=1, dash=(2, 2)))
+    sysItems.append(canvas.create_text(50+i*ex, ch-30, text=str(i), font=("Arial", 20)))
+
+#Einstellen, dass das Programm nur mit der Tastenkombination <F10><q><x> geschlossen werden kann
+root.protocol("WM_DELETE_WINDOW", disable_event)
+root.bind("<F10><q><x>", close_program)
+
+#Loslaufen
+graph = []
+tarfunc_graph = []
+positions = []
+drawTargetFunction()
+
+
+lauflos()
+
+sleep(1)
+
+loescheVerlauf()
+
+lauflos()
+
+
+root.mainloop()

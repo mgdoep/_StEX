@@ -1,0 +1,4 @@
+port /dev/ttyUSB0:
+steps 5
+min 82
+max 42
