@@ -720,32 +720,85 @@ class Data:
     def returnValue(self, variablename, **kwargs):
         rounding_to = None
         significant_digits = None
+        fils = None
         if "round_to" in kwargs:
             rounding_to = kwargs["round_to"]
         if "significant_digits" in kwargs:
             significant_digits = kwargs["significant_digits"]
-
+        if "filters" in kwargs:
+            if type(fils) is str:
+                fils = [kwargs["filters"]]
+            if type(fils) is list:
+                fils = kwargs["filters"]
+        for f in fils:
+            if f not in self.filter.keys():
+                fils = None
         vn = variablename.strip()
         if vn not in self.values.keys():
             return None
-
-        if significant_digits is not None and rounding_to is not None:
+        
+        if fils is None:
             rvval = [self.misc.rounddigits(x, rounding_to, significant_digits) for x in self.values[vn]]
+            rverr = []
+            if type(self.errorrule[vn]) is None:
+                rverr = self.error[vn]
+            elif type(self.errorrule[vn]) is float:
+                rverr = [self.errorrule[vn]] * len(self.values[vn])
+            else:
+                if self.calculateErrors(vn):
+                    rverr = self.error[vn]
+                else:
+                    rverr = [None]*len(self.values[vn])
         else:
-            rvval = self.values[vn]
-        rv = {"values": rvval, "error": None, "unit": self.unit[vn]}
-
-        if type(self.errorrule[vn]) is None:
-            rv["error"] = self.error[vn]
-        elif type(self.errorrule[vn]) is float:
-            rv["error"] = [self.errorrule[vn]]*len(self.values[vn])
-        else:
-            if self.calculateErrors(vn):
-                rv["error"] = self.error[vn]
+            rvval = []
+            rverr = []
+            i = 0
+            l = len(self.values[vn])
+            calc_succ = False
+            if type(self.errorrule[vn]) is str:
+                calc_succ = self.calculateErrors(vn)
+            while i < l:
+                add = False
+                for f in fils:
+                    if self.filter[f]:
+                        add = True
+                if add:
+                    rvval.append(self.values[vn][i])
+                    if type(self.errorrule[vn]) is None:
+                        rverr.append(self.error[vn][i])
+                    elif type(self.errorrule[vn]) is float:
+                        rverr.append(self.errorrule[vn])
+                    else:
+                        if calc_succ:
+                            rverr.append(self.error[vn][i])
+                        else:
+                            rverr.append(None)
+                i += 1
+        rv = {"values": rvval, "error": rverr, "unit": self.unit[vn]}
         return rv
 
-    def shiftFirstValue(self):
-        pass
+    def shiftValues(self, variablename, initindex, shiftto, reverse=False): #TODO: reverse einarbeiten
+        variablename = variablename.strip()
+        new = []
+        if variablename not in self.values.keys() or not 0 <= initindex < len(self.values[variablename]):
+            return False
+        else:
+            shiftby = shiftto - self.values[variablename][initindex]
+            i = 0
+            l = len(self.values[variablename])
+            while i < l:
+                if self.values[variablename] is None:
+                    new.append(None)
+                else:
+                    new.append(self.values[variablename]+shiftby)
+                i += 1
+        vnneu = variablename+"_shifted"
+        self.values[vnneu] = new
+        self.errorrule[vnneu] = self.errorrule[variablename]
+        self.error[vnneu] = self.error[variablename]
+        self.unit[vnneu] = self.unit[variablename]
+        self.comment[vnneu] = "Variable "+variablename+", um "+str(shiftby)+" verschoben"
+    
 
     def writeCSV(self, filename, target=None, **kwargs):
         seperator = ";"
@@ -753,6 +806,10 @@ class Data:
         error_keys = [str(x) for x in self.values.keys()]
         if "seperator" in kwargs:
             seperator = kwargs["seperator"]
+        if "filters" in kwargs:
+            fils = kwargs["filters"]
+        else:
+            fils = None
         if target is None:
             target = value_keys
         else:
