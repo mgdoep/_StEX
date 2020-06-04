@@ -783,10 +783,10 @@ class Data:
     crops the data set, meaning that pplies the "crop" filter to the dataset
     Parameter
     """
-    def cropDataSet(self, start, end, TimeVariable="SYS_Time", enforce=True):
+    def cropDataSet(self, start, end, TimeVariable="SYS_Time", name="crop", enforce=True):
         if start < 0.0 and end < 0.0:
             return False
-        if "crop" in self.filter.keys() and not enforce:
+        if name in self.filter.keys() and not enforce:
             return False
         TimeVariable = TimeVariable.strip()
         if TimeVariable not in self.values.keys():
@@ -808,5 +808,79 @@ class Data:
         self.filter["crop"] = fl
         return True
 
-    def applyEquDistantFilter(self, name, vars=None):
+    def deleteFilter(self, name):
+        if name in self.filter.keys():
+            del self.filter[name]
+            return True
+        return False
 
+    def applyEquDistantFilter(self, name, number, independentvar="SYS_Time", basedon="crop", vars=None):
+        useindizes = [] # list of the indizes to use
+        fl = [] # filterlist
+        if vars is None:
+            vars = [str(x) for x in self.values.keys()]
+        if independentvar not in self.values.keys():
+            return False
+        startindex = 0
+        endindex = len(self.values[independentvar])-1
+        if basedon in self.filter.keys():
+            i = 0
+            foundstart = False
+            while i <= endindex:
+                if not foundstart and self.filter["crop"][i]:
+                    startindex = i
+                    foundstart = True
+                if foundstart and not self.filter["crop"][i]:
+                    endindex = i
+                i += 1
+        elif basedon is not None:
+            return False
+        dindex = float((endindex-startindex)/(number-1))
+        i = 0
+        if independentvar not in vars:
+            vars.append(independentvar)
+        for v in vars:
+            if v not in self.values.keys():
+                return False
+
+        while 0 <= i <= number:
+            tryindex = startindex + round(float(i)*dindex)          #the index that would be a candidate
+            j = 0
+            foundindex = False
+            while 0 <= j < round(dindex)-1 and not foundindex:      #look in the vicinity of the candidate
+                allcan = True
+                if i < number:                                      #look right of the candidate
+                    for v in vars:
+                        if self.values[v][tryindex+j] is None:      #Check for each variable whether there is a value
+                            allcan = False
+                            break
+                    if allcan:                                      #if there is, break j-loop and put the index into the indexlist
+                        useindizes.append(tryindex+j)
+                        foundindex = True
+                        break
+                if i > 0 and not foundindex:
+                    allcan = True
+                    for v in vars:
+                         if self.values[v][tryindex-j] is None:
+                             allcan = False
+                             break
+                    if allcan:
+                        useindizes.append(tryindex - j)
+                        foundindex = True
+                j += 1
+            i += 1
+        
+        i = 1
+        l = len(useindizes)
+        if l > 0:
+            fl = [False]*useindizes[0]
+            fl.append(True)
+        else:
+            return False
+        while i < l:
+            fl.extend([False]*(useindizes[i]-useindizes[i-1]-1))
+            fl.append(True)
+            i += 1
+        fl.extend([False]*(len(self.values[independentvar])-useindizes[-1]-1))
+        self.filter[name] = fl
+        return True
