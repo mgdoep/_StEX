@@ -808,4 +808,5 @@ class Data:
         self.filter["crop"] = fl
         return True
 
-    def applyFilter(self, name, vars=None):
+    def applyEquDistantFilter(self, name, vars=None):
+
