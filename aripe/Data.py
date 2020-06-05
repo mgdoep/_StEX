@@ -870,6 +870,39 @@ class Data:
             del self.filter[name]
             return True
         return False
+    
+    def _getStartAndEndIndex(self, independentvar, basedon):
+        start = 0
+        end = len(self.values[independentvar])-1
+        if basedon is not None:
+            if basedon in self.values.keys():
+                i = 0
+                foundstart = False
+                while i <= end:
+                    if not foundstart and self.filter[basedon][i]:
+                        start = i
+                        foundstart = True
+                    if foundstart and not self.filter[basedon][i]:
+                        end = i
+                    i += 1
+            else:
+                start = None
+                end = None
+        return start, end
+    
+    def _createFilterListFromIndexList(self, il, independent):
+        rv = []
+        i = 1
+        l = len(il)
+        if l > 0:
+            rv.extend([False] * il[0])
+            rv.append(True)
+            while i < l:
+                rv.extend([False] * (il[i] - il[i - 1] - 1))
+                rv.append(True)
+                i += 1
+            rv.extend([False] * (len(self.values[independent]) - il[-1] - 1))
+        return rv
 
     def applyEquDistantFilter(self, name, number, independentvar="SYS_Time", basedon="crop", vars=None):
         useindizes = [] # list of the indizes to use
@@ -878,19 +911,8 @@ class Data:
             vars = [str(x) for x in self.values.keys()]
         if independentvar not in self.values.keys():
             return False
-        startindex = 0
-        endindex = len(self.values[independentvar])-1
-        if basedon in self.filter.keys():
-            i = 0
-            foundstart = False
-            while i <= endindex:
-                if not foundstart and self.filter["crop"][i]:
-                    startindex = i
-                    foundstart = True
-                if foundstart and not self.filter["crop"][i]:
-                    endindex = i
-                i += 1
-        elif basedon is not None:
+        startindex, endindex = self._getStartAndEndIndex(independentvar, basedon)
+        if startindex is None:
             return False
         dindex = float((endindex-startindex)/(number-1))
         i = 0
@@ -899,7 +921,6 @@ class Data:
         for v in vars:
             if v not in self.values.keys():
                 return False
-
         while 0 <= i <= number:
             tryindex = startindex + round(float(i)*dindex)          #the index that would be a candidate
             j = 0
@@ -927,17 +948,32 @@ class Data:
                 j += 1
             i += 1
         
-        i = 1
-        l = len(useindizes)
-        if l > 0:
-            fl = [False]*useindizes[0]
-            fl.append(True)
-        else:
+        fl = self._createFilterListFromIndexList(useindizes, independentvar)
+        if len(fl) < 1:
             return False
-        while i < l:
-            fl.extend([False]*(useindizes[i]-useindizes[i-1]-1))
-            fl.append(True)
-            i += 1
-        fl.extend([False]*(len(self.values[independentvar])-useindizes[-1]-1))
         self.filter[name] = fl
+        return True
+    
+    def applyStepFilter(self, name, step, independentvar="SYS_Time", basedon="crop", vars=None):
+        if vars is None:
+            vars = [str(x) for x in self.values.keys()]
+        if independentvar not in self.values.keys():
+            return False
+        indizes = []
+        index, endindex = self._getStartAndEndIndex(independentvar, basedon)
+        nextval = self.values[independentvar][index]
+        while index <= endindex:
+            if nextval-self.values[independentvar][index] < 1e-10:
+                allcan = True
+                for v in vars:
+                    if self.values[v] is None:
+                        allcan = False
+                    if allcan:
+                        nextval = self.values[independentvar][index] + float(step)
+                        indizes.append(index)
+            index += 1
+        fl = self._createFilterListFromIndexList(indizes, independentvar)
+        if len(fl) < 1:
+            return False
+        self.filter[name] = float
         return True
