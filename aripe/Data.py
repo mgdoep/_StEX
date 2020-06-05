@@ -726,13 +726,13 @@ class Data:
         if "significant_digits" in kwargs:
             significant_digits = kwargs["significant_digits"]
         if "filters" in kwargs:
-            if type(fils) is str:
+            if type(kwargs["filters"]) is str:
                 fils = [kwargs["filters"]]
-            if type(fils) is list:
+            if type(kwargs["filters"]) is list:
                 fils = kwargs["filters"]
         for f in fils:
             if f not in self.filter.keys():
-                fils = None
+                fils.remove(f)
         vn = variablename.strip()
         if vn not in self.values.keys():
             return None
@@ -746,7 +746,7 @@ class Data:
                 rverr = [self.errorrule[vn]] * len(self.values[vn])
             else:
                 if self.calculateErrors(vn):
-                    rverr = self.error[vn]
+                    rverr = [self.misc.rounddigits(x, rounding_to, significant_digits) for x in self.error[vn]]
                 else:
                     rverr = [None]*len(self.values[vn])
         else:
@@ -770,11 +770,11 @@ class Data:
                         rverr.append(self.errorrule[vn])
                     else:
                         if calc_succ:
-                            rverr.append(self.error[vn][i])
+                            rverr.append(self.misc.rounddigits(self.error[vn][i], rounding_to, significant_digits))
                         else:
                             rverr.append(None)
                 i += 1
-        rv = {"values": rvval, "error": rverr, "unit": self.unit[vn]}
+        rv = {"values": rvval, "error": rverr, "unit": self.unit[vn], "name": variablename}
         return rv
 
     def shiftValues(self, variablename, initindex, shiftto, reverse=False): #TODO: reverse einarbeiten
@@ -799,11 +799,18 @@ class Data:
         self.unit[vnneu] = self.unit[variablename]
         self.comment[vnneu] = "Variable "+variablename+", um "+str(shiftby)+" verschoben"
     
-
-    def writeCSV(self, filename, target=None, **kwargs):
+    """"
+    writeCSV writes a CSV table
+    Parameter:
+    - filename: Name of the CSV File
+    - target = List of dict with the following keys:
+        * name ... variable name
+        * round_to ... number of digits to round to or None
+        * significant_digits ... number of significant digits or None
+    """
+    def writeCSV(self, filename, target=None, withErrors=True, **kwargs):
         seperator = ";"
         value_keys = [str(x) for x in self.values.keys()]
-        error_keys = [str(x) for x in self.values.keys()]
         if "seperator" in kwargs:
             seperator = kwargs["seperator"]
         if "filters" in kwargs:
@@ -811,28 +818,78 @@ class Data:
         else:
             fils = None
         if target is None:
-            target = value_keys
+            th = []
+            for t in value_keys:
+                th.append({"name": t, "round_to": None, "significant_digits": None})
+            target = th
         else:
             i = 0
             l = len(target)
             if l == 0:
                 return False
             while -1 < i < l:
-                target[i] = target[i].strip()
-                if target[i] not in value_keys:
-                    target.remove(i)
+                target[i]["name"] = target[i]["name"].strip()
+                if target[i]["name"] not in value_keys:
+                    del target[i]
                     l -= 1
                     continue
                 i += 1
             if l == 0:
                 return False
-
+        vallist = []
+        for t in target:
+            try:
+                tval = self.returnValue(t["name"], round_to=t["round_to"], significant_digits=t["significant_digits"], filters=fils)
+                if tval is not None:
+                    vallist.append(tval)
+            except KeyError:
+                continue
+        
+        if len(vallist) < 1:
+            return False
         file = open(filename, "w")
         counter = 0
-
-
-
+        vlen = []
+        elen = []
+        string = ""
+        nov = len(vallist)
+        i = 0
+        while i < nov:
+            string += vallist[i]["name"]+"["+vallist[i]["unit"]+"]"
+            vlen.append(len(vallist[i]["values"]))
+            vallist[i]["values"] = [str(x) for x in vallist[i]["values"]]
+            if withErrors:
+                string += seperator + vallist[i]["name"]+"_ERROR"
+                elen.append(len(vallist[i]["error"]))
+                vallist[i]["error"] = [str(x) for x in vallist[i]["error"]]
+            if i < nov - 1:
+                string += seperator
+            else:
+                string += "\n"
+            i += 1
+        file.write(string)
+        upto = max(vlen)
+        while counter < upto:
+            i = 0
+            string = ""
+            while i < nov:
+                if counter < vlen[i]:
+                    string += vallist[i]["values"][counter]
+                    if withErrors and counter < elen[i]:
+                        string += seperator + vallist[i]["error"][counter]
+                else:
+                    string += "None"
+                    if withErrors:
+                        string += "None"
+                if i < nov - 1:
+                    string += seperator
+                else:
+                    string += "\n"
+                i += 1
+            file.write(string)
+            counter += 1
         file.close()
+        return True
 
 
     """
