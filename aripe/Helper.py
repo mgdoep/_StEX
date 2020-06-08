@@ -10,7 +10,7 @@ from platform import system
 import numpy as np
 import os
 from re import compile, match
-
+import serial.tools.list_ports as lipo
 
 class Helper:
     def __init__(self):
@@ -212,6 +212,10 @@ class Helper:
         if formatstring is not None:
             return format(number, formatstring)
         return number
-
-helper = Helper()
-print(helper.rounddigits(2.4532, 2, None))
+    
+    def getSerialPorts(self):
+        rv = list()
+        ports = list(lipo.comports())
+        for p in ports:
+            rv.append(str(p).split(" - "))
+        return rv
