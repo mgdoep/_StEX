@@ -2,7 +2,7 @@ from serial import Serial
 from threading import Thread
 from time import sleep, time
 from Helper import Helper
-import Data
+
 
 class Arduino(Thread):
 	def __init__(self, port, baud):
