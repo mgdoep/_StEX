@@ -12,6 +12,7 @@ import os
 from re import compile, match
 import serial.tools.list_ports as lipo
 
+
 class Helper:
     def __init__(self):
         pass
@@ -87,7 +88,7 @@ class Helper:
 
     def getavailableFileName(self, string, ext, getlatest=False):
         running = 0
-        while path.exists(string + str(running) + ext):
+        while os.path.exists(string + str(running) + ext):
             running += 1
         if getlatest:
             return string + str(running - 1)
@@ -172,6 +173,8 @@ class Helper:
                 if type(s2) is float or type(s2) is int:
                     return float(s2)
                 return None
+            if bool(regex_int.match(s2)):
+                return float(s2)
             if bool(regex_eng.match(s2)) and not bool(regex_ealone.match(s2)):
                 return float(s2)
             if bool(regex_ger.match(s2)) and not bool(regex_ealone.match(s2)):
@@ -180,6 +183,7 @@ class Helper:
 
         regex_eng = compile(r'^[-+]?\d*\.?\d*[eE]?[-+]?\d*$')
         regex_ger = compile(r'^[-+]?\d*,?\d*[eE]?[-+]?\d*$')
+        regex_int = compile(r'^\d*$')
         regex_ealone = compile(r'^[eE]?[+-]?\d*$')
 
         rv = []
@@ -213,9 +217,17 @@ class Helper:
             return format(number, formatstring)
         return number
     
+    """
+    getSerialPorts
+    Returns a list of the available Serialports: for each port, the list contains a list l with the follwing information:
+    0: PortName/Number (to be forwarded to the Arduino class)
+    1: Description
+    """
+    
     def getSerialPorts(self):
         rv = list()
         ports = list(lipo.comports())
         for p in ports:
             rv.append(str(p).split(" - "))
         return rv
+    

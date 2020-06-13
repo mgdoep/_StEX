@@ -15,17 +15,19 @@ It gets the following parameters:
 
 from copy import deepcopy
 from time import time
-from os import path
-from .Helper import Helper
-from .Project import Project
+from os import getcwd
+path = getcwd()
+import importlib
+Helper = importlib.import_module("Helper", path+"Helper.py")
+Project = importlib.import_module("Project", path+"Project.py")
 
 
 
 class Data:
     def __init__(self, variables, **kwargs):
-        self.misc = Helper()
-        self.reservedNames = ["SYS_Time", "MEASUREMENT_GROUP", "FILTER"]
-        self.values = {"SYS_Time": [], "FILTER": []}
+        self.misc = Helper.Helper()
+        self.reservedNames = ["SYS_Time", "MEASUREMENT_GROUP"]
+        self.values = {"SYS_Time": []}
         self.unit = {"SYS_Time": "s"}
         self.error = {"SYS_Time": []}
         self.comment = {"SYS_Time": "Systemzeit seit 01.01.1970, 00:00.00", "FILTER": "Wert, ob "}
@@ -46,9 +48,9 @@ class Data:
         path_to_value_file = None
         path_to_project_file = None
 
-        if "fromMetadata" in kwargs and type(kwargs["fromMetadata"]) is str:
+        """if "fromMetadata" in kwargs and type(kwargs["fromMetadata"]) is str:
             variables, path_to_value_file, path_to_project_file = self.createFromMetadata(kwargs["fromMetadata"])
-
+        """
         if type(variables) is list:
             names = []
             for v in variables:
@@ -141,7 +143,7 @@ class Data:
     """
     def _addVarUsingDef(self, var):
         n = var["name"].strip()
-        if n in self.values.keys:
+        if n in self.values.keys():
             return False
         else:
             self.values[n] = []
@@ -1076,3 +1078,13 @@ class Data:
             self.valueTransformation()
         return str(success)+"/"+str(overall)
     
+    def provide_compact_variable_information(self, include_systime=True):
+        vl = self._listvariablenames(not include_systime)
+        rv = []
+        for v in vl:
+            info = {}
+            info["name"] = v
+            info["unit"] = self.unit[v]
+            info["errorrule"] = self.errorrule[v]
+            rv.append(info)
+        return rv
