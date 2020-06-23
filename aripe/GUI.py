@@ -1,5 +1,6 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
+from time import sleep
 from PyQt5.QtGui import QIcon
 import sys
 import os
@@ -15,7 +16,8 @@ class GUI(QtWidgets.QMainWindow):
 		self.step = 0
 		self.misc = Helper.Helper()
 		self.Project = None
-		self.Arduino = None
+		#self.Arduino = None
+		self.Value = 0
 		
 		self.setupUi()
 	
@@ -24,8 +26,13 @@ class GUI(QtWidgets.QMainWindow):
 		self.font_bold.setBold(True)
 		self.font_Bedienelemente = QtGui.QFont()
 		self.font_Bedienelemente.setPointSize(12)
+		self.font_Bedienelemente_bold = QtGui.QFont()
+		self.font_Bedienelemente_bold.setBold(True)
 		self.font_LiveWerte = QtGui.QFont()
-		self.font_LiveWerte.setPointSize(40)
+		self.font_LiveWerte.setPointSize(24)
+		
+		self.font_KalLabel = QtGui.QFont("Times", 16)
+		
 		self.setWindowTitle("aripe")
 		
 		#menuebar
@@ -61,16 +68,56 @@ class GUI(QtWidgets.QMainWindow):
 		self.button_endMeasurement.move(20,70)
 		self.button_endMeasurement.setVisible(False)
 		
+		self.button_Kalibriere = QtWidgets.QPushButton("Kalibriere", self)
+		self.button_Kalibriere.setVisible(False)
+		self.button_Beenden = QtWidgets.QPushButton("Beenden", self)
+		self.button_Beenden.setVisible(False)
+		
+		
+		self.Label_LiveWertName = QtWidgets.QLabel(self)
+		self.Label_LiveWertName.move(20,30)
+		self.Label_LiveWertName.setFont(self.font_KalLabel)
+		self.Label_LiveWertName.setVisible(False)
+		
+		self.Label_LiveWert = QtWidgets.QLabel(self)
+		self.Label_LiveWert.setText("xyz")
+		self.Label_LiveWert.move(20, 100)
+		self.Label_LiveWert.setFont(self.font_LiveWerte)
+		self.Label_LiveWert.setVisible(False)
+		
 		self.buttons_output = []
 		
+		
+		self.liveValueItem = 0
+		self.liveValueText = ""
+		self.liveValueVariable = ""
+		self.currentLiveValue = 0.0
+		self.isSet = False
+		self.itemToCalibrate = 0
+		self.NumberOfItemsToCalibrate = 0
+		
+		
+		self.timer = QtCore.QTimer(self)
+		self.timer.timeout.connect(self.getLiveValue)
+		
+		self.manInputFields = []
+		self.manInputLabels = []
+			
+		#self.ManualInputButton.setVisible(False)
+		
+		#print(self.ManualInput1_Label.size().width())
 		#self.setMouseTracking(True)
 		
-		
+		self.inProgress = True
 		
 
 		self.setGeometry(100, 100, 600, 600)
 		self.show()
 		
+	def showV(self):
+		for i in range(len(self.manInputFields)):
+			print(i, self.manInputFields[i].text())
+			
 	def addContribuor(self):
 		pass
 		
@@ -117,21 +164,118 @@ class GUI(QtWidgets.QMainWindow):
 						self.buttons_output.append([b, (x,y)])
 						i += 1
 				self.showVariables.setDisabled(False)
+			self.step += 1 #is now 1
+			self.itemToCalibrate = 0
+			self.NumberOfItemsToCalibrate = len(self.Project.calibrationFor())
 			self.calibrate()
 				#self.buttons_output[1][0].setVisible(True)
 				
 	def calibrate(self):
-		calib_for = self.Project.calibrationFor()
-		for c in calib_for:
-			self.Label = QtWidgets.QLabel(self)
-			self.Label.setText("Kalibriere Variable "+c["name"])
-			self.Label.setVisible(True)
-			self.Label.setFont(self.font_Bedienelemente)
-			self.Label.move(20, 30)
+		if self.itemToCalibrate < self.NumberOfItemsToCalibrate:
+			c = self.Project.calibrationFor()[self.itemToCalibrate]
+			self.isSet = False
+			self.liveValueText = "Kalibriere Variable "+c["name"]
+			self.liveValueItem = self.Project.getArduinoColumn(c["name"])
+			self.liveValueVariable = c["name"]
+			self.isSet = False
+			self.timer.setSingleShot(True)
+			self.timer.start(20)
+			
+	
+	def getLiveValue(self):
+		line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
+		self.Label_LiveWertName.setText(self.liveValueText)
+		self.Label_LiveWertName.adjustSize()
+		self.Label_LiveWertName.setVisible(True)
 		
-		print(calib_for)
+		if self.step == 1:
+			self.button_Kalibriere.adjustSize()
+			self.button_Kalibriere.move(20, 150)
+			self.button_Kalibriere.setVisible(True)
+			self.button_Kalibriere.clicked.connect(self.saveLiveValue)
+		
+			if len(line) > 0:
+				self.currentLiveValue = line[self.liveValueItem].strip()
+				self.Label_LiveWert.setText(self.currentLiveValue)
+				self.Label_LiveWert.setVisible(True)
+				if self.itemToCalibrate < self.NumberOfItemsToCalibrate:
+					self.calibrate()
+				else:
+					self.timer.stop()
+					self.step += 1
+					self.Label_LiveWert.setVisible(False)
+					self.Label_LiveWertName.setVisible(False)
+					self.button_Kalibriere.setVisible(False)
+					self.startMeasurement()
+			else:
+				self.currentLiveValue = "NIL"
+				self.Label_LiveWert.setText("Fehler")
+				self.Label_LiveWert.setVisible(True)
+				if self.itemToCalibrate < self.NumberOfItemsToCalibrate:
+					self.calibrate()
+		
+	
+	def saveLiveValue(self):
+		if self.step == 1 and self.currentLiveValue != "NIL" and not self.isSet:
+				self.Project.setCalibration({"name": self.liveValueVariable, "cvalue": float(self.currentLiveValue)})
+				self.itemToCalibrate += 1
+				self.isSet = True
+	
+	
+	def EndMeasure(self):
+		pass
+	
+	def Measure(self):
+		pass
+	
+	def startMeasurement(self):
+		self.vars = self.Project.ManualArduinoVariables()
+		i = 0
+		breite_manual = 0
+		hoehe_manuallabel = 0
+		hoehe_manualfield = 0
+		self.number_manual_variables = len(self.vars["manual"])
+		while i < self.number_manual_variables:
+			if i == 0:
+				self.ManualInputButton = QtWidgets.QPushButton(self)
+				self.ManualInputButton.setText("Wert[e] speichern")
+				self.ManualInputButton.adjustSize()
+				self.ManualInputButton.setVisible(True)
+				y = 40+60*len(self.vars["manual"])
+				self.ManualInputButton.move(20, y)
+				self.button_Beenden.setVisible(True)
+				self.button_Beenden.move(300, y)
+				self.button_Beenden.clicked.connect(self.EndMeasure)
+				self.ManualInputButton.resize(QtCore.QSize(self.ManualInputButton.size().width()+10, self.button_Beenden.size().height()))
+			f = QtWidgets.QLineEdit("", self)
+			f.setVisible(True)
+			hoehe_manualfield = f.size().height()
+			l = QtWidgets.QLabel(self)
+			l.setVisible(True)
+			l.setFont(self.font_bold)
+			l.setText(self.vars["manual"][i][0] + " (in " + self.vars["manual"][i][1] + ")")
+			l.adjustSize()
+			b, h = l.size().width(), l.size().height()
+			if breite_manual < b:
+				breite_manual = b
+			if hoehe_manuallabel < h:
+				hoehe_manuallabel = h
+			l.move(20, 40+60*i)
+			self.manInputFields.append(f)
+			self.manInputLabels.append(l)
+			i += 1
+		x = breite_manual + 40
+		k = (hoehe_manualfield-hoehe_manuallabel)//2
+		for i in self.number_manual_variables:
+			self.manInputFields[i].move(x, 40+i*60-k)
+		self.ArduinoMeasurementVariables = self.Project.getArduinoValues()
+		
+		if self.number_manual_variables > 0:
+			pass #TODO implement rest
 		
 		
+	def getValue(self):
+		pass
 	def getOutput(self):
 		print(self.sender().pos().y())
 		pass					#TODO: Implement the outputs, nr gives index in list
@@ -159,9 +303,9 @@ class GUI(QtWidgets.QMainWindow):
 		
 	def getArduino(self):
 		p = self.misc.getSerialPorts()
-		if len(p) == 1 and self.Project.getBaud > 0:
+		if len(p) == 1 and self.Project.getBaud() > 0:
 			self.Arduino = Arduino.Arduino(p[0][0], self.Project.getBaud())
-			print(self.Arduino.isRunning)
+			self.Arduino.start()
 
 app = QtWidgets.QApplication(sys.argv)
 ex = GUI()

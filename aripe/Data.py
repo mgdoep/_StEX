@@ -339,7 +339,7 @@ class Data:
     
     Note: addnew and append cannot be True at the same time!
     """
-    def importValues(self, val, timematched=False, tmtolerance=0.5, addnew=False, append=False, importerrors=False):
+    def importValues(self, val, timematched=False, tmtolerance=0.5, addnew=False, append=False, importerrors=False, enforce=False):
         self._createbackups()
 
         if type(val) is dict:
@@ -407,7 +407,7 @@ class Data:
                         self.error[n] = val["error"][candidates[nearest][0]]
                     index_lastimport = candidates[nearest][0]
         else:
-            if len(self.values["SYS_Time"]) != len(val["values"]):
+            if len(self.values["SYS_Time"]) != len(val["values"]) and not enforce:
                 raise ValueError("ERR-D-IMVAL07: The number of values, you want to add does not match the number of values in the dataset.")
             self.values[n] = val["values"]
             if importerrors:
@@ -447,7 +447,28 @@ class Data:
                                     except:
                                         self._undochanges()
 
-
+    def importNewValues(self, vals, witherrors=True, enlargeSYS_Time = True):
+        anzahl = len(vals[0]["values"])
+        systprovided = False
+        sysenlarge = []
+        for val in vals:
+            if len(val["values"]) != anzahl:
+                return -1
+            if val["name"] == "SYS_Time":
+                systprovided = True
+        rv = 1
+        for val in vals:
+            if val["name"] in self.values.keys():
+                if val["unit"] == self.unit[val["name"]]:
+                    self.values[val["name"]].extend(val["values"])
+                else:
+                    rv = 0
+                if witherrors:
+                    self.error[val["name"]].extend(val["values"])
+        if not systprovided and enlargeSYS_Time:
+            self.values["SYS_Time"].extend([round(time(), 2)]*anzahl)
+        return rv
+    
     def saveValues(self, witherrors=True, empty="None", **kwargs):
         istmpfile = True
         filename = self.misc.getavailableFileName(self.tmpFileName, ".values")
@@ -559,7 +580,7 @@ class Data:
         line = lines[0].strip().split(seperator)
         number_of_columns = len(line)
         for i in range(number_of_columns):
-            li = lines[0].split("[")
+            li = line[i].split("[")
             info = li[0].strip()
             if error_column_app in info:
                 imported_errors.append(info.split(error_column_app)[0].strip())
@@ -574,7 +595,7 @@ class Data:
                 imported_units.append(li[1].split("]")[0].strip())
             else:
                 imported_units.append("")
-
+        print(imported_variables)
         SYS_Time_provided = "SYS_Time" in imported_variables
         for i in range(number_of_columns):
             if rv_is_list and (is_defined[i] or add_unknown):
@@ -767,7 +788,7 @@ class Data:
             while i < l:
                 add = False
                 for f in fils:
-                    if self.filter[f]:
+                    if self.filter[f][i]:
                         add = True
                 if add:
                     rvval.append(self.values[vn][i])
@@ -920,13 +941,13 @@ class Data:
             end = float(self.values[TimeVariable][-1])+1.0
         i = 0
         fl = []
-        while -1 < i < ltv:
-            if start < self.values[TimeVariable][i] < end:
+        while i < ltv:
+            if start <= self.values[TimeVariable][i] <= end:
                 fl.append(True)
             else:
                 fl.append(False)
             i += 1
-        self.filter["crop"] = fl
+        self.filter[name] = fl
         return True
 
     def deleteFilter(self, name):

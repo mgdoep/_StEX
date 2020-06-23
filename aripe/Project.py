@@ -12,9 +12,10 @@ class Project:
         if len(xmlinfo) > 0:
             self.name,  self.Institution = xmlinfo[0], xmlinfo[1]
             self.variables, self.outputs = xmlinfo[2], xmlinfo[3]
-            self.ardProtocol, self.ardEProtocol, self.ardBaud = xmlinfo[4], xmlinfo[5], xmlinfo[6]
-            self.StandardFolder, self.TempFolder = xmlinfo[7], xmlinfo[8]
-            self.calibrate = xmlinfo[9]
+            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator = xmlinfo[4], xmlinfo[5], xmlinfo[6], xmlinfo[7]
+            self.StandardFolder, self.TempFolder = xmlinfo[8], xmlinfo[9]
+            self.calibrate = xmlinfo[10]
+            self.control = xmlinfo[11]
             if len(self.variables) > 0:
                 self.Data = Data.Data(self.variables)
         else:
@@ -75,9 +76,11 @@ class Project:
             vi = {}
             try:
                 vi["name"] = v.find("name").text.strip()
+                vi["live"] = False
                 vi["method"] = v.find("name").attrib["type"].strip().lower()
                 if vi["method"] == "arduino":
                     ardFlag = True
+                    vi["ardCol"] = int(v.find("name").attrib["col"].strip().lower())
                 if vi["method"] == "calculation":
                     vi["formula"] = v.find("name").attrib["formula"].strip()
                 vi["unit"] = v.find("unit").text.strip()
@@ -93,12 +96,13 @@ class Project:
     
             pvariables.append(vi)
         ardBaud = 0
+        ardSeperator = " "
         if ardFlag:
             try:
-                ardProtocol = root.find("arduino").attrib["protocol"]
-                ardErrorProtocol = root.find("arduino").attrib["rotocolerror"]
-                ardBaud = int(root.find("arduino").attrib["baud"])
-                
+                ardProtocol = root.find("arduino").find("protocol").text
+                ardErrorProtocol = root.find("arduino").find("protocolerror").text
+                ardBaud = int(root.find("arduino").find("baud").text)
+                ardSeperator = root.find("arduino").find("seperator").text
             except AttributeError:
                 pass
             except KeyError:
@@ -176,7 +180,41 @@ class Project:
         except:
             pass
         
-        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, tempFolder, standardFolder, calibrate_for]
+        try:
+            lv = root.find("live").findall("value")
+            for lvi in lv:
+                lvt = lvi.text.strip()
+                for i in range(len(pvariables)):
+                    if lvt == pvariables[i]["name"] and pvariables[i]["method"] == "arduino":
+                        pvariables["live"] = True
+        except:
+            pass
+        
+        startstop = {"start_button": True, "start_countdown": False, "start_delay": 0, "stop_button": True, "stop_after": False, "stop_time": 0}
+        
+        try:
+            st = root.find("start")
+            if st.attrib["type"].strip().lower() == "countdown":
+                startstop["start_button"] = False
+                startstop["start_countdown"] = True
+            if st.text.strip() != "":
+                try:
+                    startstop["start_delay"] = int(st.text.strip())
+                except:
+                    pass
+        except:
+            pass
+        
+        try:
+            st = root.find("stop")
+            if st.attrib["type"].strip().lower() == "after":
+                startstop["stop_after"] = True
+                startstop["stop_button"] = False
+                startstop["stop_time"] = int(st.text.strip())
+        except:
+            pass
+        
+        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, tempFolder, standardFolder, calibrate_for, startstop]
         return rv
 
     def addConributor(self, name):
@@ -210,12 +248,42 @@ class Project:
         else:
             return []
     
+    def getArduinoValues(self):
+        rv = []
+        for v in self.variables:
+            if v["method"] == "arduino":
+                rv.append({"name": v["name"], "unit": v["unit"], "ardCol": v["ardCol"], "live": v["live"]})
+        return rv
+    """
+    setCalibration
+    saves the calibration information
+    Parameter variable is dict with the following keys:
+    - name ... variable name
+    - cvalue ... calibration value
+    """
     def setCalibration(self, variable):
-        if type(variable) is list:
-            for v in variable:
-                self.calibration_information.append(v)
-        else:
-            self.calibration_information.append(variable)
+        for i in range(len(self.calibrate)):
+            if variable["name"] == self.calibrate[i]["name"]:
+                self.calibrate[i]["cvalue"] = self.misc.str_to_float(variable["cvalue"])
+    
+    
     
     def getVariables(self):
         return self.Data.provide_compact_variable_information()
+    
+    def getArduinoColumn(self, name):
+        for v in self.variables:
+            if v["name"] == name and v["method"] == "arduino":
+                return v["ardCol"]
+        return -1
+    
+    def ManualArduinoVariables(self):
+        rv = {"manual": [], "arduino": [],  "calculation": []}
+        for v in self.variables:
+            if v["method"] == "manual":
+                rv["manual"].append((v["name"], v["unit"]))
+            elif v["method"] == "arduino":
+                rv["arduino"].append(v["name"])
+            else:
+                rv["calculation"].append(v["name"])
+        return rv
