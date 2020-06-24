@@ -125,7 +125,7 @@ class Data:
     def _ini_helper_error(self, errorinfo):
         rv = 0.0
         if type(errorinfo) is str:
-            if errorinfo == "":
+            if errorinfo == "" or errorinfo == "manual":
                 return None
             else:
                 rv = self.misc.str_to_float(errorinfo)
@@ -446,7 +446,7 @@ class Data:
                                             self.error[v].append(val[v][vindex])
                                     except:
                                         self._undochanges()
-
+    
     def importNewValues(self, vals, witherrors=True, enlargeSYS_Time = True):
         anzahl = len(vals[0]["values"])
         systprovided = False
@@ -677,7 +677,7 @@ class Data:
     For the sake of speed, addValue just appends the list. Therefore it is strongly recommended to run
     valueTransformation() afterwards.
 
-    """
+    
     def addValues(self, vallist, adderrors=True, addSysTime=True):
         number_added = 0            #Use this instead of len(importedvars) for the sake of speed
         importedvars = []
@@ -711,6 +711,18 @@ class Data:
             return False
         return True
     """
+    
+    def addValues(self, vallist):
+        wSYSTime = False
+        for v in vallist:
+            if v["name"] == "SYS_Time":
+                wSYSTime = True
+            self.values[v["name"]].append(v["value"])
+            self.error[v["name"]].append(v["error"])
+        if not wSYSTime:
+            self.values["SYS_Time"].append(round(time(), 3))
+    
+    """
     valueTransformation()   
     This method shall be run after the addition of new data, it converts Strings to numbers and 
     and extends lists in self.values and self.error with None, if length do not match the SYS_Time 
@@ -718,7 +730,15 @@ class Data:
     """
 
     def valueTransformation(self):
+        maxlength = 0
+        for k in self.values.keys():
+            l = len(self.values[k])
+            if l > maxlength:
+                maxlength = l
         length = len(self.values["SYS_Time"])
+        if length < maxlength:
+            self.values["SYS_Time"].extend([0.0]*(maxlength-length))
+            length = maxlength
         for k in self.values.keys():
             if k not in self.reservedNames:
                 t = self.misc.str_to_float(self.values[k])
@@ -729,7 +749,31 @@ class Data:
                 if k in self.error.keys() and len(self.error[k]) < length:
                     self.error[k].extend([None]*(length-len(self.values[k])))
 
-
+    
+    def calculateVariable(self, varname, RPN_String):
+        components = RPN_String.strip().split(" ")
+        vars_in_string = []
+        length = -1
+        for c in components:
+            if c in self.values.keys():
+                vars_in_string.append(c)
+                if length < 0:
+                    length = len(self.values[c])
+        results = []
+        for i in range(length):
+            varval = {}
+            hasNone = False
+            for v in vars_in_string:
+                varval[v] = self.values[v][i]
+                if self.values[v][i] is None:
+                    hasNone = True
+            if not hasNone:
+                results.append(self.misc.calculate_using_RPN(RPN_String, varval))
+            else:
+                results.append(None)
+        self.values[varname] = results
+        
+    
     """
     returnValue(variablename)
     returns a dict with the following keys:

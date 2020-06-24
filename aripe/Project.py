@@ -49,10 +49,10 @@ class Project:
     _getfromMetadata
     returns: <List of variables>, <list of output options>, <string of arduino protocol>, <string of arduino protocol indicating error>
     """
-    def _getfromMetadata(self, path):
+    def _getfromMetadata(self, pfad):
         try:
             import xml.etree.ElementTree as ET
-            tree = ET.parse(path)
+            tree = ET.parse(pfad)
             root = tree.getroot()
         except ImportError:
                 return []
@@ -60,7 +60,7 @@ class Project:
                 return []
         if str(root.tag).lower() != "aripeproject":
             return []
-        tree = ET.parse("project-metadata.xml")
+        tree = ET.parse(pfad)
         root = tree.getroot()
 
         try:
@@ -186,7 +186,7 @@ class Project:
                 lvt = lvi.text.strip()
                 for i in range(len(pvariables)):
                     if lvt == pvariables[i]["name"] and pvariables[i]["method"] == "arduino":
-                        pvariables["live"] = True
+                        pvariables[i]["live"] = True
         except:
             pass
         
@@ -250,10 +250,13 @@ class Project:
     
     def getArduinoValues(self):
         rv = []
+        rv2 = False
         for v in self.variables:
             if v["method"] == "arduino":
                 rv.append({"name": v["name"], "unit": v["unit"], "ardCol": v["ardCol"], "live": v["live"]})
-        return rv
+                if v["live"]:
+                    rv2 = True
+        return rv, rv2
     """
     setCalibration
     saves the calibration information
@@ -278,12 +281,28 @@ class Project:
         return -1
     
     def ManualArduinoVariables(self):
-        rv = {"manual": [], "arduino": [],  "calculation": []}
+        rv = {"manual": [], "arduino": []}
+        live = 0
         for v in self.variables:
             if v["method"] == "manual":
-                rv["manual"].append((v["name"], v["unit"]))
+                ita = {"name": v["name"], "unit": v["unit"], "getErrorValue": False}
+                for v2 in self.getVariables():
+                    if v["name"] == v2["name"] and v2["errorrule"] is None:
+                        ita["getErrorValue"] = True
+                rv["manual"].append(ita)
+                
             elif v["method"] == "arduino":
-                rv["arduino"].append(v["name"])
-            else:
-                rv["calculation"].append(v["name"])
-        return rv
+                rv["arduino"].append({"name": v["name"], "unit": v["unit"], "live": v["live"], "ardCol": v["ardCol"]})
+                print(v["name"], v["live"])
+                if v["live"]:
+                    live += 1
+        return rv, len(rv["manual"]) > 0, live
+    
+    def addManualValues(self, vars):
+        self.Data.addValues(vars)
+        
+    def MeasurementPostProcessing(self):
+        self.Data.valueTransformation()
+        for v in self.variables:
+            if v["method"] == "calculation":
+                self.Data.calculateVariable(v["name"], v["formula"])
