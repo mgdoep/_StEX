@@ -1123,7 +1123,7 @@ class Data:
     - valTrans: bool, whether a self.valueTransformation should be run. Highly recommended, hence: Default value = True
     
     """
-    def getValuesFromRawFile(self, filename, variables, seperator=" ", adderrors=False, addSYS_Time=False, valTrans=True):
+    def getValuesFromRawFile(self, filename, variables, seperator=" ", valTrans=True):
         success = 0
         overall = 0
         for line in open(filename, "r").readlines():
@@ -1133,11 +1133,11 @@ class Data:
             vl = []
             try:
                 for v in variables:
-                    vl.append((v[0], ls[int(v[1])], 0.0))
+                    vl.append({"name": v[0], "value": ls[int(v[1])], "error": 0.0})
             except:
                 success -= 1
                 continue
-            if not self.addValues(vl, adderrors=adderrors, addSysTime=addSYS_Time):
+            if not self.addValues(vl):
                 success -= 1
         if valTrans:
             self.valueTransformation()

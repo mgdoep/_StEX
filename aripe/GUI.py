@@ -1,6 +1,6 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
-from time import sleep
+from time import time, sleep
 from PyQt5.QtGui import QIcon
 import sys
 import os
@@ -20,6 +20,8 @@ class GUI(QtWidgets.QMainWindow):
 		self.Value = 0
 		self.MeasureMode = -1
 		self.currentArduinoValues = []
+		self.isRunning = False
+		self.startTime = 0
 		self.setupUi()
 	
 	def setupUi(self):
@@ -116,9 +118,6 @@ class GUI(QtWidgets.QMainWindow):
 		self.setGeometry(100, 100, 600, 600)
 		self.show()
 		
-	def showV(self):
-		for i in range(len(self.manInputFields)):
-			print(i, self.manInputFields[i].text())
 			
 	def addContribuor(self):
 		pass
@@ -163,7 +162,7 @@ class GUI(QtWidgets.QMainWindow):
 						#b.setDisabled(True)
 						b.setVisible(False)
 						b.clicked.connect(self.getOutput)
-						self.buttons_output.append([b, (x,y)])
+						self.buttons_output.append([b, (x,y), i])
 						i += 1
 				self.showVariables.setDisabled(False)
 			self.step += 1 #is now 1
@@ -189,7 +188,8 @@ class GUI(QtWidgets.QMainWindow):
 			
 	
 	def getLiveValue(self):
-		line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
+		if self.MeasureMode < 1:
+			line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
 		
 		if self.step == 1:
 			self.Label_LiveWertName.setText(self.liveValueText)
@@ -227,21 +227,44 @@ class GUI(QtWidgets.QMainWindow):
 				self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
 			self.timer.setSingleShot(True)
 			self.timer.start(10)
-			
-			
-			
-			
 		
-	
+		else:
+			if self.Project.control["stop_after"]:
+				if self.isRunning:
+					if time()-self.startTime > self.Project.control["time"]+0.2:
+						self.timer.stop()
+						self.EndMeasure()
+				else:
+					self.startTime = time()
+					self.isRunning = True
+					if self.Project.ardSleep > 0:
+						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["time"], sleep_time=self.Project.ardSleep)
+					else:
+						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["time"])
+			else:
+				if not self.isRunning:
+					self.isRunning = True
+					if self.Project.ardSleep > 0:
+						self.Arduino.readContinously(self.Project.TempFolder, sleep_time=self.Project.ardSleep)
+					else:
+						self.Arduino.readContinously(self.Project.TempFolder)
+			livevals = self.Arduino.currentValues.split(self.Project.ardSeperator)
+			for i in range(self.number_live_values):
+				self.LiveValueMeter[i].setText(livevals[self.LiveValueColumns[i]])
+			self.timer.setSingleShot(True)
+			self.timer.start(40)
+			
 	def saveLiveValue(self):
 		if self.step == 1 and self.currentLiveValue != "NIL" and not self.isSet:
 				self.Project.setCalibration({"name": self.liveValueVariable, "cvalue": float(self.currentLiveValue)})
 				self.itemToCalibrate += 1
 				self.isSet = True
 	
-	
 	def EndMeasure(self):
 		self.timer.stop()
+		if self.MeasureMode == 1:
+			self.Arduino.isRunning = False
+			sleep(self.Project.ardSleep*2)
 		if self.MeasureMode == 0:
 			for v in self.manInputFields:
 				v.setVisible(False)
@@ -256,8 +279,18 @@ class GUI(QtWidgets.QMainWindow):
 			v.setVisible(False)
 		for v in self.LiveValueLabel:
 			v.setVisible(False)
+		vT = True
+		if self.MeasureMode == 1:
+			dialog = QtWidgets.QMessageBox()
+			dialog.setIcon(QtWidgets.QMessageBox.Information)
+			dialog.setText(self.Project.importRAW(self.Arduino.RawFileName) + " Werte erfolgreich importiert.")
+			dialog.setWindowTitle("Datenimport abgeschlossen")
+			dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+			returnValue = dialog.exec()
+			vT = False
 		self.step = 3
-		self.Project.MeasurementPostProcessing()
+		self.Project.MeasurementPostProcessing(valTrans=vT)
+		self.OutputMenu()
 	
 	def Measure(self):
 		valimport = []
@@ -380,14 +413,49 @@ class GUI(QtWidgets.QMainWindow):
 			self.timer.start(10)
 		
 		
+	def OutputMenu(self):
+		for b in self.buttons_output:
+			b[0].setVisible(True)
 			
-		
-		
-	def getValue(self):
-		pass
 	def getOutput(self):
-		print(self.sender().pos().y())
-		pass					#TODO: Implement the outputs, nr gives index in list
+		outputindex = -1
+		coming_from = self.sender().pos()
+		for v in self.buttons_output:
+			if coming_from.x() == v[1][0] and coming_from.y() == y[1][1]:
+				outputindex = v[1][2]
+				break
+		if outputindex > -1:
+			typ = self.Project.outputs[outputindex]["type"]
+			filename = ""
+			if typ in ["csv", "xls", "plot"]:
+				filter = ("Tabelle speichern", "CSV-Dateien", "csv")
+				saveit = True
+				if typ == "xls":
+					filter = ("Excel-Tabelle speichern", "Excel-Dateien", "xls")
+				if typ == "plot":
+					filter = ("Plot speichern", "PNG-Bilder", "png")
+					saveit = self.Project.outputs[outputindex]["save"]
+				if saveit:
+					filename, _ = QFileDialog.getSaveFileName(self, filter[0], self.Project.StandardFolder, filter[1] + " (*." + filter[2] + ")")
+					try:
+						if filename.split(".")[-1].lower() != filter[2]:
+							filename = filename + "." + filter[2]
+					except:
+						filename = filename + "." + filter[2]
+				if typ in ["cls", "xls"]:
+					self.Project.exportToFile(filename, outputindex)
+				else:
+					self.Project.plot(filename, outputindex)
+			elif typ == "list":
+				self.showValuesAsList(outputindex)
+			else:
+				self.showValuesAsTable(outputindex)
+				
+	def showValuesAsList(self, outputindex):
+		pass
+	
+	def showValuesAsTable(self, outputindex):
+		pass
 	
 	def VariableTable(self):
 		box = QtWidgets.QGroupBox("Variablen")

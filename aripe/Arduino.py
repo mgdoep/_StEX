@@ -9,6 +9,8 @@ class Arduino(Thread):
 		Thread.__init__(self)
 		self.device = Serial(port, baud)
 		self.isRunning = True
+		self.RawFileName = ""
+		self.currentValues = []
 	
 	"""
 	readContiniously
@@ -17,15 +19,27 @@ class Arduino(Thread):
 	Parameter:
 	- tempFolder: directory of the temporary file
 	"""
-	def readContinously(self, tempFolder):
-		rv = tempFolder + "t"+str(round(time()%100000))+".raw"
-		file = open(rv, "w")
+	def readContinously(self, tempFolder, sleep_time=1.0, **kwargs):
+		self.RawFileName = tempFolder + "/t"+str(round(time()%100000))+".raw"
+		stopafter = False
+		file = open(self.RawFileName, "w")
+		if "time" in kwargs.keys() and kwargs["time"] is not None:
+			duration = float(kwargs["time"])
+			stopafter = True
 		self.device.flushInput()
-		while self.isRunning:
-			s = self.device.read_all().decode()
-			file.write(s)
+		if stopafter:
+			start = time()
+			while time()-start < duration:
+				s = self.device.read_all().decode()
+				self.currentValues = s.split("\r")[-1]
+				file.write(s)
+				sleep(sleep_time)
+		else:
+			while self.isRunning:
+				s = self.device.read_all().decode()
+				file.write(s)
+				sleep(sleep_time)
 		file.close()
-		return rv
 	
 	"""
 	readCurrent

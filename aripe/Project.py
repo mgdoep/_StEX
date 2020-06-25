@@ -12,18 +12,19 @@ class Project:
         if len(xmlinfo) > 0:
             self.name,  self.Institution = xmlinfo[0], xmlinfo[1]
             self.variables, self.outputs = xmlinfo[2], xmlinfo[3]
-            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator = xmlinfo[4], xmlinfo[5], xmlinfo[6], xmlinfo[7]
-            self.StandardFolder, self.TempFolder = xmlinfo[8], xmlinfo[9]
-            self.calibrate = xmlinfo[10]
-            self.control = xmlinfo[11]
+            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator, self.ardSleep = xmlinfo[4], xmlinfo[5], xmlinfo[6], xmlinfo[7], xmlinfo[8]
+            self.StandardFolder, self.TempFolder = xmlinfo[9], xmlinfo[10]
+            self.calibrate = xmlinfo[11]
+            self.control = xmlinfo[12]
             if len(self.variables) > 0:
                 self.Data = Data.Data(self.variables)
         else:
             self.name, self.Institution = "", ""
             self.variables, self.outputs = None, None
-            self.ardProtocol, self.ardEProtocol, self.ardBaud = None, None, None
+            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator, self.ardSleep  = None, None, None, None, None
             self.StandardFolder, self.TempFolder = "", ""
             self.calibrate = []
+            self.control = None
         self.calibration_information = []
         self.tmpFileName = ""
         self.CreationDate = datetime.now
@@ -71,6 +72,7 @@ class Project:
         ardFlag = False
         ardProtocol = None
         ardErrorProtocol = None
+        ardSleep = 0
         pvariables = []
         for v in vars:
             vi = {}
@@ -95,14 +97,18 @@ class Project:
                 vi["comment"] = ""
     
             pvariables.append(vi)
-        ardBaud = 0
+        ardBaud = 9600
         ardSeperator = " "
         if ardFlag:
             try:
                 ardProtocol = root.find("arduino").find("protocol").text
                 ardErrorProtocol = root.find("arduino").find("protocolerror").text
-                ardBaud = int(root.find("arduino").find("baud").text)
+                if root.find("arduino").find("baud").text.strip() != "":
+                    ardBaud = int(root.find("arduino").find("baud").text)
                 ardSeperator = root.find("arduino").find("seperator").text
+                ardSleep = 0
+                if root.find("arduino").find("sleep").text.strip() != "":
+                    ardSleep = float(root.find("arduino").find("sleep").text.strip())
             except AttributeError:
                 pass
             except KeyError:
@@ -127,6 +133,10 @@ class Project:
                             collist.append(c.text)
                         ol["columns"] = collist
                     if ol["type"].strip() in ["plot"]:
+                        if "save" in ol.keys():
+                            ol["save"] = ol["save"].lower().strip() == "true"
+                        else:
+                            ol["save"] = False
                         axislist = []
                         axis_xml = o.findall("axis")
                         for a in axis_xml:
@@ -191,7 +201,6 @@ class Project:
             pass
         
         startstop = {"start_button": True, "start_countdown": False, "start_delay": 0, "stop_button": True, "stop_after": False, "stop_time": 0}
-        
         try:
             st = root.find("start")
             if st.attrib["type"].strip().lower() == "countdown":
@@ -214,7 +223,7 @@ class Project:
         except:
             pass
         
-        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, tempFolder, standardFolder, calibrate_for, startstop]
+        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, ardSleep, tempFolder, standardFolder, calibrate_for, startstop]
         return rv
 
     def addConributor(self, name):
@@ -301,8 +310,25 @@ class Project:
     def addManualValues(self, vars):
         self.Data.addValues(vars)
         
-    def MeasurementPostProcessing(self):
-        self.Data.valueTransformation()
+    def MeasurementPostProcessing(self, valTrans=True):
+        if valTrans:
+            self.Data.valueTransformation()
         for v in self.variables:
             if v["method"] == "calculation":
                 self.Data.calculateVariable(v["name"], v["formula"])
+    
+    def importRAW(self, filename):
+        vl = []
+        for v in self.variables:
+            if v["method"] == "arduino":
+                vl.append((v["name"], v["ardCol"]))
+        return self.Data.getValuesFromRawFile(filename, vl)
+    
+    def exportToFile(self, filename, outputinfo_index):
+        pass #TODO: Implement XLS, CSV export
+    
+    def valuesForGUI(self, outputinfo_index):
+        pass #TODO: Implement output for GUI
+    
+    def plot(self, filename, outputinfo_index):
+        pass #TODO: Implement plotting
