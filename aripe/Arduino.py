@@ -1,45 +1,76 @@
 from serial import Serial
-from threading import Thread
+from threading import Thread, Event
 from time import sleep, time
-from Helper import Helper
+import sys
+import os
+path = os.getcwd()
+import importlib
+Helper = importlib.import_module("Helper", path+"Helper.py")
 
 
 class Arduino(Thread):
-	def __init__(self, port, baud):
+	def __init__(self, port, baud, helper, stopevent, GUI):
 		Thread.__init__(self)
 		self.device = Serial(port, baud)
-		self.isRunning = True
+		self.helper = helper
+		self.StopEvent = stopevent
+		self.GUI = GUI
+		self.Running = True
 		self.RawFileName = ""
-		self.currentValues = []
+		
 	
 	"""
 	readContiniously
-	Reads the input from the Arduino and writes it to a temporary file, the file name is returned.
+	Reads the input from the Arduino and writes it to a String.
 	Call Data.getValuesFromRawFile afterwards to import the data in the container!
 	Parameter:
 	- tempFolder: directory of the temporary file
+	- sleep_time: Time between each reading attempt to ensure new values can be read
 	"""
-	def readContinously(self, tempFolder, sleep_time=1.0, **kwargs):
+	def readContinously(self, tempFolder, sleep_time=0.4, **kwargs):
 		self.RawFileName = tempFolder + "/t"+str(round(time()%100000))+".raw"
 		stopafter = False
-		file = open(self.RawFileName, "w")
+		cvs = ""
+		s = ""
 		if "time" in kwargs.keys() and kwargs["time"] is not None:
 			duration = float(kwargs["time"])
 			stopafter = True
 		self.device.flushInput()
 		if stopafter:
 			start = time()
-			while time()-start < duration:
+			cvs = ""
+			while time()-start < duration and self.helper.ArduinoIsRunning:
 				s = self.device.read_all().decode()
-				self.currentValues = s.split("\r")[-1]
-				file.write(s)
-				sleep(sleep_time)
+				cvs += s
+				if self.helper.ArduinoIsRunning:				#Zur Sicherheit, dass nicht geschrieben wird, während GUI versucht zu importieren
+					file = open(self.RawFileName, "a")
+					file.write(s)
+					file.close()
+				try:
+					cvss = cvs.split("\n")[0]
+					if len(cvss) > 0:
+						self.GUI.updateLive(cvs.split("\n")[0])
+						cvs = ""
+				except:
+					pass
+				sleep(0.4)
 		else:
-			while self.isRunning:
+			while self.Running:
 				s = self.device.read_all().decode()
+				cvs += s
+				file = open(self.RawFileName, "a")
 				file.write(s)
-				sleep(sleep_time)
-		file.close()
+				file.close()
+				if self.StopEvent.is_set():
+					break
+				try:
+					#self.helper.currentValues = cvs.split("\n")[-1]
+					self.GUI.updateLive(cvs.split("\n")[0])
+					cvs = ""
+				except:
+					pass
+				sleep(0.4)
+			#sleep(0.2)
 	
 	"""
 	readCurrent
@@ -64,7 +95,12 @@ class Arduino(Thread):
 				misses += 1
 		return []
 	
+	def getRawFileName(self):
+		return self.RawFileName
+	
 	def run(self):
 		pass
+	
+	
 
 # tempFolder = "/home/martin/aktuell/aripetemp/"

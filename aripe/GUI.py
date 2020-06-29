@@ -1,6 +1,7 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
 from time import time, sleep
+from threading import Event
 from PyQt5.QtGui import QIcon
 import sys
 import os
@@ -9,6 +10,8 @@ import importlib
 Project = importlib.import_module("Project", path+"Project.py")
 Helper = importlib.import_module("Helper", path+"Helper.py")
 Arduino = importlib.import_module("Arduino", path+"Arduino.py")
+
+
 
 class GUI(QtWidgets.QMainWindow):
 	def __init__(self):
@@ -22,6 +25,7 @@ class GUI(QtWidgets.QMainWindow):
 		self.currentArduinoValues = []
 		self.isRunning = False
 		self.startTime = 0
+		self.ArduinoStopEvent = Event()
 		self.setupUi()
 	
 	def setupUi(self):
@@ -34,9 +38,14 @@ class GUI(QtWidgets.QMainWindow):
 		self.font_LiveWerte = QtGui.QFont()
 		self.font_LiveWerte.setPointSize(24)
 		
-		self.font_KalLabel = QtGui.QFont("Times", 16)
-		
+		self.font_KalLabel = self.font_bold
+		self.font_Countdown = QtGui.QFont()
+		self.font_Countdown.setPointSize(36)
+		self.font_Countdown.setBold(True)
+
 		self.setWindowTitle("aripe")
+		self.setGeometry(100,100,600,600)
+		self.ArduinoIsRunning = True
 		
 		#menuebar
 		self.loadProject = QtWidgets.QAction("Projekt öffnen", self)
@@ -48,26 +57,45 @@ class GUI(QtWidgets.QMainWindow):
 		self.addContrib.triggered.connect(self.addContribuor)
 		self.addContrib.setDisabled(True)
 		
+		self.EndAction = QtWidgets.QAction("Messung beenden")
+		self.EndAction.setShortcut("Ctrl+B")
+		self.EndAction.triggered.connect(self.EndMeasure)
+		self.EndAction.setDisabled(True)
+		
 		self.showVariables = QtWidgets.QAction("Variablen anzeigen", self)
 		self.showVariables.triggered.connect(self.VariableTable)
 		self.showVariables.setDisabled(True)
+		
+		self.ImportRawFromFile = QtWidgets.QAction("RAW-Datei importieren", self)
+		self.ImportRawFromFile.triggered.connect(self.importRaw)
+		self.ImportRawFromFile.setShortcut("Ctrl+R")
+		self.ImportRawFromFile.setDisabled(True)
 		
 		menuebar = self.menuBar()
 		projectMenue = menuebar.addMenu("Projekt")
 		projectMenue.addAction(self.loadProject)
 		projectMenue.addAction(self.addContrib)
 		projectMenue.addAction(self.showVariables)
+		rawMenue = menuebar.addMenu("RAW Daten")
+		rawMenue.addAction(self.ImportRawFromFile)
+		
 		
 		#buttons
 		self.button_startMeasurement = QtWidgets.QPushButton("Messung starten", self)
 		self.button_startMeasurement.adjustSize()
-		self.button_startMeasurement.setDisabled(True)
-		self.button_startMeasurement.move(20,30)
+		x = self.button_startMeasurement.size().width() + 20
+		y = self.button_startMeasurement.size().height() + 20
+		self.button_startMeasurement.resize(x, y)
+		x = self.size().width() // 2 - self.button_startMeasurement.size().width() // 2
+		y = self.size().height() // 2 - self.button_startMeasurement.size().height() // 2
+		self.button_startMeasurement.move(x,y)
 		self.button_startMeasurement.setVisible(False)
 		
+		
+		
 		self.button_endMeasurement = QtWidgets.QPushButton("Messung beenden", self)
-		self.button_endMeasurement.adjustSize()
-		self.button_endMeasurement.setDisabled(True)
+		self.button_endMeasurement.pressed.connect(self.EndMeasure)
+		self.button_endMeasurement.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 		self.button_endMeasurement.move(20,70)
 		self.button_endMeasurement.setVisible(False)
 		
@@ -88,6 +116,8 @@ class GUI(QtWidgets.QMainWindow):
 		self.Label_LiveWert.setFont(self.font_LiveWerte)
 		self.Label_LiveWert.setVisible(False)
 		
+		self.LiveValues = ""
+		
 		self.buttons_output = []
 		
 		
@@ -103,9 +133,29 @@ class GUI(QtWidgets.QMainWindow):
 		self.timer = QtCore.QTimer(self)
 		self.timer.timeout.connect(self.getLiveValue)
 		
-		self.manInputFields, self.manInputLabels, self.manInputVarNames, self.manErrorFields, self.manErrorLabels = [], [], [], [], []
+		self.manInputFields, self.manInputLabels, self.manInputVarNames = [], [], []
+		self.manErrorFields, self.manErrorLabels = [], []
 		self.LiveValueMeter, self.LiveValueLabel, self.LiveValueColumns = [], [], []
 		self.ArdMeasureCols = []
+		
+		self.CountdownValue = 0
+		
+		self.CountDownLabel = QtWidgets.QLabel(self)
+		self.CountDownLabel.setFont(self.font_Countdown)
+		self.CountDownLabel.setStyleSheet("color: red")
+		self.CountDownLabel.setText("5")
+		self.CountDownLabel.setVisible(False)
+		self.CountDownLabel.adjustSize()
+		x = self.size().width() // 2 - self.CountDownLabel.size().width() // 2
+		y = self.size().height() // 2 - self.CountDownLabel.size().height() // 2
+		self.CountDownLabel.move(x,y)
+		
+		self.LabelMessungInProgress = QtWidgets.QLabel(self)
+		self.LabelMessungInProgress.setText("Messung läuft")
+		self.LabelMessungInProgress.setFont(self.font_Bedienelemente)
+		self.LabelMessungInProgress.setStyleSheet("color: red")
+		self.LabelMessungInProgress.adjustSize()
+		self.LabelMessungInProgress.setVisible(False)
 			
 		#self.ManualInputButton.setVisible(False)
 		
@@ -115,7 +165,6 @@ class GUI(QtWidgets.QMainWindow):
 		self.inProgress = True
 		
 
-		self.setGeometry(100, 100, 600, 600)
 		self.show()
 		
 			
@@ -124,7 +173,7 @@ class GUI(QtWidgets.QMainWindow):
 		
 		
 	def getProject(self):
-		name = QFileDialog.getOpenFileName(self, "Projektdatei wählen", "~/")[0]
+		name = QFileDialog.getOpenFileName(self, "Projektdatei wählen", "~/", "XML-Datei (*.xml)")[0]
 		if name != "":
 			self.Project = Project.Project(name)
 			if self.Project.succLoad():
@@ -165,6 +214,7 @@ class GUI(QtWidgets.QMainWindow):
 						self.buttons_output.append([b, (x,y), i])
 						i += 1
 				self.showVariables.setDisabled(False)
+				self.ImportRawFromFile.setDisabled(False)
 			self.step += 1 #is now 1
 			self.itemToCalibrate = 0
 			self.NumberOfItemsToCalibrate = len(self.Project.calibrationFor())
@@ -187,7 +237,8 @@ class GUI(QtWidgets.QMainWindow):
 		
 			
 	
-	def getLiveValue(self):
+	def getLiveValue(self) -> None:
+		print("Yo")
 		if self.MeasureMode < 1:
 			line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
 		
@@ -223,22 +274,23 @@ class GUI(QtWidgets.QMainWindow):
 					
 		if self.step == 2 and self.MeasureMode == 0:
 			self.currentArduinoValues = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
-			for i in range(self.number_live_values):
-				self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
+			#for i in range(self.number_live_values):
+			#	self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
 			self.timer.setSingleShot(True)
-			self.timer.start(10)
+			self.timer.start(250)
 		
-		else:
+		if self.step == 2 and self.MeasureMode > 0:
+			self.UpDateLiveMeter()
 			if self.Project.control["stop_after"]:
 				if self.isRunning:
-					if time()-self.startTime > self.Project.control["time"]+0.2:
+					if time()-self.startTime > self.Project.control["stop_time"]+0.2:
 						self.timer.stop()
 						self.EndMeasure()
 				else:
 					self.startTime = time()
 					self.isRunning = True
 					if self.Project.ardSleep > 0:
-						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["time"], sleep_time=self.Project.ardSleep)
+						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["stop_time"], sleep_time=self.Project.ardSleep)
 					else:
 						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["time"])
 			else:
@@ -248,11 +300,10 @@ class GUI(QtWidgets.QMainWindow):
 						self.Arduino.readContinously(self.Project.TempFolder, sleep_time=self.Project.ardSleep)
 					else:
 						self.Arduino.readContinously(self.Project.TempFolder)
-			livevals = self.Arduino.currentValues.split(self.Project.ardSeperator)
-			for i in range(self.number_live_values):
-				self.LiveValueMeter[i].setText(livevals[self.LiveValueColumns[i]])
-			self.timer.setSingleShot(True)
-			self.timer.start(40)
+			
+			self.timer.stop()
+			self.timer.setSingleShot(False)
+			self.timer.start(500)
 			
 	def saveLiveValue(self):
 		if self.step == 1 and self.currentLiveValue != "NIL" and not self.isSet:
@@ -262,9 +313,15 @@ class GUI(QtWidgets.QMainWindow):
 	
 	def EndMeasure(self):
 		self.timer.stop()
+		try:
+			self.timer.disconnect()
+		except:
+			pass
 		if self.MeasureMode == 1:
-			self.Arduino.isRunning = False
-			sleep(self.Project.ardSleep*2)
+			self.ArduinoStopEvent.set()
+			loop = QtCore.QEventLoop()					#Warte 500ms, falls Arduino-Klasse gerade schreibt
+			QtCore.QTimer.singleShot(500, loop.quit)
+			loop.exec_()
 		if self.MeasureMode == 0:
 			for v in self.manInputFields:
 				v.setVisible(False)
@@ -280,13 +337,15 @@ class GUI(QtWidgets.QMainWindow):
 		for v in self.LiveValueLabel:
 			v.setVisible(False)
 		vT = True
+		self.button_Beenden.setVisible(False)
+		self.LabelMessungInProgress.setVisible(False)
 		if self.MeasureMode == 1:
 			dialog = QtWidgets.QMessageBox()
 			dialog.setIcon(QtWidgets.QMessageBox.Information)
-			dialog.setText(self.Project.importRAW(self.Arduino.RawFileName) + " Werte erfolgreich importiert.")
+			dialog.setText(self.Project.importRAW(self.Arduino.getRawFileName()) + " Werte erfolgreich importiert.")
 			dialog.setWindowTitle("Datenimport abgeschlossen")
 			dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
-			returnValue = dialog.exec()
+			returnValue = dialog.exec_()
 			vT = False
 		self.step = 3
 		self.Project.MeasurementPostProcessing(valTrans=vT)
@@ -316,8 +375,6 @@ class GUI(QtWidgets.QMainWindow):
 			hoehe_manuallabel = 0
 			hoehe_manualfield = 0
 			
-			self.button_Beenden.setVisible(True)
-			
 			#Init fields and labels for manual input
 			while i < self.number_manual_variables:
 				self.MeasureMode = 0
@@ -330,7 +387,6 @@ class GUI(QtWidgets.QMainWindow):
 					y = 40+60*self.number_manual_variables
 					self.ManualInputButton.move(20, y)
 					self.button_Beenden.move(300, y)
-					self.button_Beenden.clicked.connect(self.EndMeasure)
 					self.ManualInputButton.resize(QtCore.QSize(self.ManualInputButton.size().width()+10, self.button_Beenden.size().height()))
 				f = QtWidgets.QLineEdit("", self)
 				f.resize(80, f.size().height())
@@ -374,10 +430,12 @@ class GUI(QtWidgets.QMainWindow):
 					self.manErrorFields[i].move(220, 40+i*60-k)
 			
 			if self.number_live_values > 0:
-				self.timer.setInterval(20)
 				i = 0
 				breite = 0
-				x_base = 300
+				if self.MeasureMode == 0:
+					x_base = 300
+				else:
+					x_base = 20
 				for v in self.vars["arduino"]:
 					if v["live"]:
 						self.LiveValueColumns.append(v["ardCol"])
@@ -396,8 +454,17 @@ class GUI(QtWidgets.QMainWindow):
 						self.LiveValueMeter.append(m)
 						self.LiveValueLabel.append(l)
 						i += 1
+				
+				if self.MeasureMode == 0:
+					x = 300
+				else:
+					x = 20
+				if i > self.number_manual_variables or self.MeasureMode != 0:
+					self.button_Beenden.move(x, 40+60*i)
+				
 				x = x_base + 20 + breite
 				k = (self.LiveValueMeter[0].size().height() - self.LiveValueLabel[0].size().height()) // 2
+				
 				for i in range(i):
 					self.LiveValueMeter[i].move(x, 40+60*i-k)
 			av = 0
@@ -408,10 +475,48 @@ class GUI(QtWidgets.QMainWindow):
 			self.number_arduino_variables = av
 			for v in self.vars["arduino"]:
 				self.ArdMeasureCols[v["ardCol"]] = v["name"]
+			
+			x = 20
+			y = self.size().height() - 80
+			self.LabelMessungInProgress.move(x, y)
 			if self.MeasureMode != 0:
 				self.MeasureMode = 1
-			self.timer.start(10)
+				self.timer.stop()
+				self.CountDownLabel.setVisible(False)
+				if self.Project.control["start_countdown"]:
+					self.timer.timeout.disconnect()
+					self.timer.timeout.connect(self.Countdown)
+					self.CountdownValue = self.Project.control["start_delay"]
+					self.button_startMeasurement.clicked.connect(self.Countdown)
+					self.button_startMeasurement.setVisible(True)
+					
+				else:
+					self.button_startMeasurement.clicked.connect(self.losjetzt)
+					self.button_startMeasurement.setVisible(True)
+			else:
+				self.losjetzt()
+	
+	def losjetzt(self):
+		self.EndAction.setDisabled(False)
+		self.button_startMeasurement.setVisible(False)
+		self.CountDownLabel.setVisible(False)
+		if self.Project.control["stop_button"]:
+			self.button_Beenden.setVisible(True)
+			self.button_Beenden.setEnabled(True)
+			self.button_Beenden.clicked.connect(self.EndMeasure)
 		
+		#self.button_endMeasurement.setVisible(True)
+		
+		if self.MeasureMode != 0:
+			self.LabelMessungInProgress.setVisible(True)
+		self.timer.stop()
+		try:
+			self.timer.timeout.disconnect()
+		except:
+			pass
+		self.timer.timeout.connect(self.getLiveValue)
+		self.timer.setSingleShot(True)
+		self.timer.start(10)
 		
 	def OutputMenu(self):
 		for b in self.buttons_output:
@@ -428,20 +533,20 @@ class GUI(QtWidgets.QMainWindow):
 			typ = self.Project.outputs[outputindex]["type"]
 			filename = ""
 			if typ in ["csv", "xls", "plot"]:
-				filter = ("Tabelle speichern", "CSV-Dateien", "csv")
+				fil = ("Tabelle speichern", "CSV-Dateien", "csv")
 				saveit = True
 				if typ == "xls":
-					filter = ("Excel-Tabelle speichern", "Excel-Dateien", "xls")
+					fil = ("Excel-Tabelle speichern", "Excel-Dateien", "xls")
 				if typ == "plot":
-					filter = ("Plot speichern", "PNG-Bilder", "png")
+					fil = ("Plot speichern", "PNG-Bilder", "png")
 					saveit = self.Project.outputs[outputindex]["save"]
 				if saveit:
-					filename, _ = QFileDialog.getSaveFileName(self, filter[0], self.Project.StandardFolder, filter[1] + " (*." + filter[2] + ")")
+					filename, _ = QFileDialog.getSaveFileName(self, fil[0], self.Project.StandardFolder, fil[1] + " (*." + fil[2] + ")")
 					try:
-						if filename.split(".")[-1].lower() != filter[2]:
-							filename = filename + "." + filter[2]
+						if filename.split(".")[-1].lower() != fil[2]:
+							filename = filename + "." + fil[2]
 					except:
-						filename = filename + "." + filter[2]
+						filename = filename + "." + fil[2]
 				if typ in ["cls", "xls"]:
 					self.Project.exportToFile(filename, outputindex)
 				else:
@@ -450,7 +555,30 @@ class GUI(QtWidgets.QMainWindow):
 				self.showValuesAsList(outputindex)
 			else:
 				self.showValuesAsTable(outputindex)
-				
+	
+	def Countdown(self):
+		for i in range(self.number_live_values):
+			self.LiveValueMeter[i].setVisible(False)
+			self.LiveValueLabel[i].setVisible(False)
+			self.button_Beenden.setVisible(False)
+		self.CountDownLabel.setVisible(True)
+		self.button_startMeasurement.setVisible(False)
+		if self.CountdownValue < 0:
+			for i in range(self.number_live_values):
+				self.LiveValueMeter[i].setVisible(True)
+				self.LiveValueLabel[i].setVisible(True)
+				self.button_Beenden.setVisible(True)
+			self.losjetzt()
+		else:
+			self.CountDownLabel.setVisible(True)
+			self.CountDownLabel.setText(str(self.CountdownValue))
+			self.CountdownValue -= 1
+			self.timer.setSingleShot(True)
+			if self.CountdownValue < 0:
+				self.timer.start(100)
+			else:
+				self.timer.start(1000)
+			
 	def showValuesAsList(self, outputindex):
 		pass
 	
@@ -476,14 +604,33 @@ class GUI(QtWidgets.QMainWindow):
 		vbox.addWidget(tabelle)
 		box.setLayout(vbox)
 		box.setVisible(True)
-		
+	
+	def importRaw(self):
+		name = QFileDialog.getOpenFileName(self, "RAW-Datei wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")
+		self.Project.importRAW(name)
+	
+	def updateLive(self, v):
+		self.LiveValues = v
 		
 	def getArduino(self):
 		p = self.misc.getSerialPorts()
 		if len(p) == 1 and self.Project.getBaud() > 0:
-			self.Arduino = Arduino.Arduino(p[0][0], self.Project.getBaud())
+			self.Arduino = Arduino.Arduino(p[0][0], self.Project.getBaud(), self.misc, self.ArduinoStopEvent, self)
 			self.Arduino.start()
 
+	def UpDateLiveMeter(self):
+		canupdate = True
+		try:
+			livevallist = self.LiveValues.split(self.Project.ardSeperator)
+		except:
+			canupdate = False
+		if canupdate:
+			for i in range(self.number_live_values):
+				try:
+					self.LiveValueMeter[i].setText(livevallist[self.LiveValueColumns[i]])
+				except:
+					pass
+				
 app = QtWidgets.QApplication(sys.argv)
 ex = GUI()
 sys.exit(app.exec_())

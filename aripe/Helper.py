@@ -12,10 +12,21 @@ import os
 from re import compile, match
 import serial.tools.list_ports as lipo
 
+ArduinoIsRunning = True
+ArdunioCurrentValues = ""
 
 class Helper:
     def __init__(self):
-        pass
+        self.ArduinoIsRunning = True
+        self.RawFileName = ""
+        self.RawString = ""
+        self.currentValues = []
+    
+    def writeRAWFile(self):
+        file = open(self.RawFileName, "w")
+        file.write(self.RawString)
+        file.close()
+        return self.RawFileName
 
 
     """
@@ -190,7 +201,10 @@ class Helper:
 
         if type(string) is list:
             for e in string:
-                rv.append(calc(e.strip()))
+                if type(e) is str:
+                    rv.append(calc(e.strip()))
+                if type(e) is int or type(e) is float:
+                    rv.append(calc(e))
             return rv
         if type(string) is str:
             return calc(string.strip())
@@ -230,4 +244,11 @@ class Helper:
         for p in ports:
             rv.append(str(p).split(" - "))
         return rv
+    
+    def getCurrentValue(self):
+        print("M")
+        return self.currentValues
+    
+    def setCurrentValue(self, v):
+        self.currentValues = v
     

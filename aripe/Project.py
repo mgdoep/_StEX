@@ -12,19 +12,23 @@ class Project:
         if len(xmlinfo) > 0:
             self.name,  self.Institution = xmlinfo[0], xmlinfo[1]
             self.variables, self.outputs = xmlinfo[2], xmlinfo[3]
-            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator, self.ardSleep = xmlinfo[4], xmlinfo[5], xmlinfo[6], xmlinfo[7], xmlinfo[8]
+            self.ardProtocol, self.ardEProtocol, self.ardBaud = xmlinfo[4], xmlinfo[5], xmlinfo[6]
+            self.ardSeperator, self.ardSleep = xmlinfo[7], xmlinfo[8]
             self.StandardFolder, self.TempFolder = xmlinfo[9], xmlinfo[10]
             self.calibrate = xmlinfo[11]
             self.control = xmlinfo[12]
+            self.filters = xmlinfo[13]
             if len(self.variables) > 0:
                 self.Data = Data.Data(self.variables)
         else:
             self.name, self.Institution = "", ""
             self.variables, self.outputs = None, None
-            self.ardProtocol, self.ardEProtocol, self.ardBaud, self.ardSeperator, self.ardSleep  = None, None, None, None, None
+            self.ardProtocol, self.ardEProtocol, self.ardBaud = None, None, None
+            self.ardSeperator, self.ardSleep = None, None
             self.StandardFolder, self.TempFolder = "", ""
             self.calibrate = []
             self.control = None
+            self.filters = xmlinfo[13]
         self.calibration_information = []
         self.tmpFileName = ""
         self.CreationDate = datetime.now
@@ -78,6 +82,8 @@ class Project:
             vi = {}
             try:
                 vi["name"] = v.find("name").text.strip()
+                if "," in vi["name"]:
+                    continue
                 vi["live"] = False
                 vi["method"] = v.find("name").attrib["type"].strip().lower()
                 if vi["method"] == "arduino":
@@ -214,6 +220,9 @@ class Project:
         except:
             pass
         
+        if startstop["start_countdown"] and (type(startstop["start_delay"]) is not int or startstop["start_delay"] < 1):
+            startstop["start_delay"] = 5
+        
         try:
             st = root.find("stop")
             if st.attrib["type"].strip().lower() == "after":
@@ -223,7 +232,73 @@ class Project:
         except:
             pass
         
-        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, ardSleep, tempFolder, standardFolder, calibrate_for, startstop]
+        
+        filters = root.find("filters").findall("filter")
+        filter_list = []
+        for f in filters:
+            fi = f.attrib
+            varexist = False
+            filexist = False
+            if "name" in fi.keys() and len(fi["name"].strip()) > 0:
+                fi["name"] = fi["name"].strip()
+                if "," in fi["name"]:
+                    continue
+                for ef in filter_list:
+                    if ef["name"] == fi["name"]:
+                        filexist = True
+                vn = f.text.strip()
+                """if "," in vn:
+                    fi["variable"] = fi["variable"].split(",")
+                    for ivn in range(len(fi["variable"])):
+                        fi["variable"][i] = fi["variable"][i].strip()
+                        if len(fi["variable"][i]) > 0:
+                            for v in pvariables:
+                                if fi["variable"][i] == v["name"]:
+                                    varexist = True
+                """
+                fi["variable"] = vn
+                for v in pvariables:
+                    if vn == v["name"]:
+                        varexist = True
+            else:
+                continue
+            if not varexist or filexist:
+                continue
+            fi["name"] = fi["name"].strip()
+            if "type" not in fi.keys() or fi["type"].lower().strip() not in ["crop", "croponce", "equid", "interval"]:
+                continue
+            fi["type"] = fi["type"].lower().strip()
+            if "value" not in fi.keys():
+                continue
+            
+            if "(" in fi["value"]:
+                begin = None
+                end = None
+                try:
+                    begin = self.misc.str_to_float(fi["value"].split("(")[1].split(",")[0])
+                    end = self.misc.str_to_float(fi["value"].split(",")[1].split(")")[0])
+                except:
+                    continue
+                if begin is None or end is None or "crop" not in fi["type"]:
+                    continue
+                else:
+                    fi["start"] = begin
+                    fi["ende"] = end
+                    del fi["value"]
+            else:
+                fi["value"] = self.misc.str_to_float(fi["value"])
+                if fi["value"] is None or fi["type"] not in ["equid", "interval"]:
+                    continue
+            if "basedon" in fi.keys():
+                fi["basedon"] = fi["basedon"].strip()
+                filexist = False
+                for ef in filter_list:
+                    if ef["name"] == fi["basedon"]:
+                        filexist = True
+                if not filexist:
+                    continue
+            filter_list.append(fi)
+        rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, ardSleep, standardFolder, tempFolder, calibrate_for, startstop, filter_list]
         return rv
 
     def addConributor(self, name):
@@ -302,7 +377,6 @@ class Project:
                 
             elif v["method"] == "arduino":
                 rv["arduino"].append({"name": v["name"], "unit": v["unit"], "live": v["live"], "ardCol": v["ardCol"]})
-                print(v["name"], v["live"])
                 if v["live"]:
                     live += 1
         return rv, len(rv["manual"]) > 0, live
@@ -325,10 +399,19 @@ class Project:
         return self.Data.getValuesFromRawFile(filename, vl)
     
     def exportToFile(self, filename, outputinfo_index):
-        pass #TODO: Implement XLS, CSV export
+        oi = self.outputs[outputinfo_index]
+        if oi["type"] == "xls":
+            try:
+                import xlsxwriter
+            except:
+                return False
+            
     
     def valuesForGUI(self, outputinfo_index):
         pass #TODO: Implement output for GUI
     
     def plot(self, filename, outputinfo_index):
         pass #TODO: Implement plotting
+    
+    def printData(self):
+        print(self.Data.values)
