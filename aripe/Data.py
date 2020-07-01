@@ -1010,25 +1010,6 @@ class Data:
             return True
         return False
     
-    """def _getStartAndEndIndex(self, independentvar, basedon):
-        start = 0
-        end = len(self.values[independentvar])-1
-        if basedon is not None:
-            if basedon in self.values.keys():
-                i = 0
-                foundstart = False
-                while i <= end:
-                    if not foundstart and self.filter[basedon][i]:
-                        start = i
-                        foundstart = True
-                    if foundstart and not self.filter[basedon][i]:
-                        end = i
-                    i += 1
-            else:
-                start = None
-                end = None
-        return start, end"""
-    
     """
     _getStartStopIndexForFiltersBasedon
     
@@ -1202,7 +1183,7 @@ class Data:
     - valTrans: bool, whether a self.valueTransformation should be run. Highly recommended, hence: Default value = True
     
     """
-    def getValuesFromRawFile(self, filename, variables, seperator=" ", valTrans=True):
+    def getValuesFromRawFile(self, filename, variables, protocol_string, seperator=" ", valTrans=True):
         success = 0
         overall = 0
         for line in open(filename, "r").readlines():
@@ -1210,15 +1191,17 @@ class Data:
             overall += 1
             ls = line.split(seperator)
             vl = []
+            if protocol_string != ls[0].strip():
+                continue
             try:
                 for v in variables:
                     vl.append({"name": v[0], "value": ls[int(v[1])], "error": 0.0})
             except:
                 success -= 1
+                print("Damn")
                 continue
             if not self.addValues(vl):
                 success -= 1
-                print("P2")
         if valTrans:
             self.valueTransformation()
         return str(success)+"/"+str(overall)

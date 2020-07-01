@@ -121,6 +121,81 @@ class Project:
                 pass
             if ardProtocol is None:
                 return []
+
+        filters = root.find("filters").findall("filter")
+        filter_list = []
+        for f in filters:
+            fi = f.attrib
+            varexist = False
+            filexist = False
+            if "name" in fi.keys() and len(fi["name"].strip()) > 0:
+                fi["name"] = fi["name"].strip()
+                if "," in fi["name"]:
+                    continue
+                for ef in filter_list:
+                    if ef["name"] == fi["name"]:
+                        filexist = True
+                vn = f.text.strip()
+                if "," in vn:
+                    fi["variable"] = fi["variable"].split(",")
+                    lvl = len(fi["variable"])
+                    ivn = 0
+                    while ivn < lvl:
+                        fi["variable"][ivn] = fi["variable"][ivn].strip()
+                        if len(fi["variable"][ivn]) > 0:
+                            for v in pvariables:
+                                if fi["variable"][ivn] == v["name"]:
+                                    varexist = True
+                            ivn += 1
+                        else:
+                            del fi["variable"][ivn]
+                            lvl -= 1
+                    if len(fi["variable"]) < 1:
+                        varexist = True
+                else:
+                    fi["variable"] = vn
+                for v in pvariables:
+                    if vn == v["name"]:
+                        varexist = True
+            else:
+                continue
+            if not varexist or filexist:
+                continue
+            fi["name"] = fi["name"].strip()
+            if "type" not in fi.keys() or fi["type"].lower().strip() not in ["crop", "croponce", "number", "step"]:
+                continue
+            fi["type"] = fi["type"].lower().strip()
+            if "value" not in fi.keys():
+                continue
+    
+            if "(" in fi["value"]:
+                begin = None
+                end = None
+                try:
+                    begin = self.misc.str_to_float(fi["value"].split("(")[1].split(",")[0])
+                    end = self.misc.str_to_float(fi["value"].split(",")[1].split(")")[0])
+                except:
+                    continue
+                if begin is None or end is None or "crop" not in fi["type"]:
+                    continue
+                else:
+                    fi["start"] = begin
+                    fi["ende"] = end
+                    del fi["value"]
+            else:
+                fi["value"] = self.misc.str_to_float(fi["value"])
+                if fi["value"] is None or fi["type"] not in ["number", "step"]:
+                    continue
+            if "basedon" in fi.keys():
+                fi["basedon"] = fi["basedon"].strip()
+                filexist = False
+                for ef in filter_list:
+                    if ef["name"] == fi["basedon"]:
+                        filexist = True
+                if not filexist:
+                    continue
+            filter_list.append(fi)
+        
         outputs_xml = None
         try:
             outputs_xml = root.find("outputs").findall("output")
@@ -136,19 +211,66 @@ class Project:
                         col_xml = o.findall("column")
                         collist = []
                         for c in col_xml:
-                            collist.append(c.text)
+                            if c.text.strip() not in pvariables:
+                                continue
+                            collist.append(c.text.strip())
                         ol["columns"] = collist
+                    
+                    if "error_column_appendix" not in ol.keys():
+                        ol["error_column_appendix"] = "_Fehler"
+                    
+                    if "seperator" not in ol.keys():
+                        ol["seperator"] = ","
+                        
+                    if "error" in ol.keys():
+                        ol["error"] = ol["error"].lower().strip() == "true"
+                    else:
+                        ol["error"] = False
+
+                    if "save" in ol.keys():
+                        ol["save"] = ol["save"].lower().strip() == "true"
+                    else:
+                        ol["save"] = False
+                    
+                    if "sigdit" in ol.keys():
+                        try:
+                            ol["sigdit"] = int(ol["sigdit"])
+                        except ValueError:
+                            del ol["sigdit"]
+                    
+                    if "round" in ol.keys():
+                        try:
+                            ol["round"] = int(ol["round"])
+                        except ValueError:
+                            del ol["round"]
+                    
                     if ol["type"].strip() in ["plot"]:
-                        if "save" in ol.keys():
-                            ol["save"] = ol["save"].lower().strip() == "true"
-                        else:
-                            ol["save"] = False
                         axislist = []
                         axis_xml = o.findall("axis")
+                        foundxy = [False, False]
                         for a in axis_xml:
                             ae = a.attrib
-                            ae["var"] = a.text.strip()
-                            axislist.append(ae)
+                            var = a.text.strip()
+                            if var not in pvariables:
+                                continue
+                            ae["var"] = var
+                            if "type" not in ae.keys():
+                                pass
+                            else:
+                                ae["type"] = ae["type"].strip().lower()
+                                if (ae["type"] == "x" and foundxy[0]) or (ae["type"] == "y" and foundxy[1]):
+                                    pass
+                                else:
+                                    if ae["type"] not in ["x", "y"]:
+                                        pass
+                                    elif ae["type"] == "x":
+                                        foundxy[0] = True
+                                        axislist.append(ae)
+                                    else:
+                                        foundxy[1] = True
+                                        axislist.append(ae)
+                        if len(axislist) < 2:
+                            continue
                         ol["axis"] = axislist
                         try:
                             fit_xml = o.find("fit")
@@ -157,12 +279,18 @@ class Project:
                             ol["fit"] = fitinfo
                         except:
                             pass
+                        
                     if "filter" in ol.keys():
                         ofl = ol["filter"].split(",")
+                        lofl = len(ofl)
                         i = 0
-                        while i < len(ofl):
+                        while i < lofl:
                             ofl[i] = ofl[i].strip()
-                            i += 1
+                            if ofl[i] not in filter_list:
+                                del ofl[i]
+                                lofl -= 1
+                            else:
+                                i += 1
                         ol["filter"] = ofl
                 except:
                     continue
@@ -233,71 +361,7 @@ class Project:
             pass
         
         
-        filters = root.find("filters").findall("filter")
-        filter_list = []
-        for f in filters:
-            fi = f.attrib
-            varexist = False
-            filexist = False
-            if "name" in fi.keys() and len(fi["name"].strip()) > 0:
-                fi["name"] = fi["name"].strip()
-                if "," in fi["name"]:
-                    continue
-                for ef in filter_list:
-                    if ef["name"] == fi["name"]:
-                        filexist = True
-                vn = f.text.strip()
-                """if "," in vn:
-                    fi["variable"] = fi["variable"].split(",")
-                    for ivn in range(len(fi["variable"])):
-                        fi["variable"][i] = fi["variable"][i].strip()
-                        if len(fi["variable"][i]) > 0:
-                            for v in pvariables:
-                                if fi["variable"][i] == v["name"]:
-                                    varexist = True
-                """
-                fi["variable"] = vn
-                for v in pvariables:
-                    if vn == v["name"]:
-                        varexist = True
-            else:
-                continue
-            if not varexist or filexist:
-                continue
-            fi["name"] = fi["name"].strip()
-            if "type" not in fi.keys() or fi["type"].lower().strip() not in ["crop", "croponce", "equid", "interval"]:
-                continue
-            fi["type"] = fi["type"].lower().strip()
-            if "value" not in fi.keys():
-                continue
-            
-            if "(" in fi["value"]:
-                begin = None
-                end = None
-                try:
-                    begin = self.misc.str_to_float(fi["value"].split("(")[1].split(",")[0])
-                    end = self.misc.str_to_float(fi["value"].split(",")[1].split(")")[0])
-                except:
-                    continue
-                if begin is None or end is None or "crop" not in fi["type"]:
-                    continue
-                else:
-                    fi["start"] = begin
-                    fi["ende"] = end
-                    del fi["value"]
-            else:
-                fi["value"] = self.misc.str_to_float(fi["value"])
-                if fi["value"] is None or fi["type"] not in ["equid", "interval"]:
-                    continue
-            if "basedon" in fi.keys():
-                fi["basedon"] = fi["basedon"].strip()
-                filexist = False
-                for ef in filter_list:
-                    if ef["name"] == fi["basedon"]:
-                        filexist = True
-                if not filexist:
-                    continue
-            filter_list.append(fi)
+        
         rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, ardSleep, standardFolder, tempFolder, calibrate_for, startstop, filter_list]
         return rv
 
@@ -398,14 +462,85 @@ class Project:
                 vl.append((v["name"], v["ardCol"]))
         return self.Data.getValuesFromRawFile(filename, vl)
     
+    def _getSigDitRoundTo(self, index):
+        sigdit, roundto = -1, -1
+        if "sigdit" in self.outputs[index].keys():
+            sigdit = self.outputs[index]["sigdit"]
+        if "round" in self.outputs[index].keys():
+            roundto = self.outputs[index]["round"]
+        return sigdit, roundto
+    
+    def _getSmoothFileNameForExport(self, filename, ext):
+        if "."+ext not in filename:
+            if "." in filename:
+                fns = filename.split(".")
+                del fns[-1]
+                filename = ""
+                filename = filename.join(fns)
+            filename = filename + "." + ext
+        return filename
+        
     def exportToFile(self, filename, outputinfo_index):
+        sigdit, roundto = self._getSigDitRoundTo(outputinfo_index)
         oi = self.outputs[outputinfo_index]
         if oi["type"] == "xls":
             try:
                 import xlsxwriter
             except:
                 return False
-            
+        columns = []
+        lengths = []
+        elengths = []
+        for i in range(len(self.outputs[outputinfo_index]["columns"])):
+            try:
+                columns.append(self.Data.returnValues(self.outputs[outputinfo_index][i], round_to=roundto, significant_digits=sigdit))
+                lengths.append(len(columns[-1]["values"]))
+                elengths.append(len(columns[-1]["error"]))
+            except:
+                pass
+        anzahl = len(columns)
+        max_length = max(lengths)
+        if anzahl < 1:
+            return False
+        
+        if oi["type"]=="xls":
+            filename = self._getSmoothFileNameForExport(filename, "xlsx")
+        if oi["type"]=="cvs":
+            filename = self._getSmoothFileNameForExport(filename, "csv")
+        
+        if oi["type"]=="xls":
+            wb = xlsxwriter.Workbook(filename)
+            sheet = wb.add_worksheet(self.name)
+            for col in range(anzahl):
+                colindex = col
+                error_shift = 0
+                if oi["error"]:
+                    colindex = 2*col
+                    error_shift = 1
+                sheet.write(0, colindex, columns[i]["name"]+"["+columns[i]["unit"]+"]")
+                if error_shift > 0:
+                    sheet.write(0, colindex + 1, columns[i]["name"]+oi["error_column_appendix"])
+                for j in range(lengths[col]):
+                    sheet.write(j+1, colindex, columns[i]["values"][j])
+                    if error_shift > 0 and j < elengths[col]:
+                        sheet.write(j+1, colindex+1, columns[i]["error"][j])
+            wb.close()
+            return True
+        if oi["type"] == "csv":
+            file = open(filename, "w")
+            for i in range(anzahl):
+                file.write(columns[i]["name"]+"["+columns[i]["unit"]+"]")
+                if oi["error"] or (i < anzahl - 1):
+                    file.write(oi["seperator"])
+                if oi["error"]:
+                    file.write(columns[i]["name"]+oi["error_column_appendix"])
+                    if (i < anzahl - 1):
+                        file.write(oi["seperator"])
+                if i == anzahl - 1:
+                    file.write("\n")
+            file.close()
+            return True
+        return False
     
     def valuesForGUI(self, outputinfo_index):
         pass #TODO: Implement output for GUI

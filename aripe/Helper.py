@@ -114,70 +114,103 @@ class Helper:
     Optional Paramter:
     round = <Integervalues> : Number of decimals to be rounded to   
     """
-    def calculate_using_RPN(self, RPN_string, variableValues, **kwargs):
-        stack=[]
-        RPN_parts=RPN_string.split(" ")
-        operations_special_numbers = ["pi"]
-        operations_2_v = ["+", "-", "*", "/", "%", "**", "^"]
-        operations_1_v = ["SQRT", "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "EXP"]
-        stacklen = 0
-        for p in RPN_parts:
-            n = self.str_to_float(p)
-            if n is not None:
-                stack.append(float(p))
-                stacklen += 1
-            else: #p is string
-                if p in variableValues.keys() and variableValues[p] is not None:
-                    stack.append(variableValues[p])
+    def calculate_using_RPN(self, RPN_string, variableValues_list, **kwargs):
+        def single_value_calc(variableValues, **kwargs):
+            stack=[]
+            RPN_parts=RPN_string.split(" ")
+            operations_special_numbers = ["pi"]
+            operations_2_v = ["+", "-", "*", "/", "%", "**", "^"]
+            operations_1_v = ["SQRT", "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "EXP"]
+            stacklen = 0
+            for p in RPN_parts:
+                n = self.str_to_float(p)
+                if n is not None:
+                    stack.append(float(p))
                     stacklen += 1
-                elif p in operations_2_v and stacklen > 1:
-                    b = stack.pop()
-                    a = stack.pop()
-                    if p == "+":
-                        stack.append(a+b)
-                    elif p == "-":
-                        stack.append(a-b)
-                    elif p == "*":
-                        stack.append(a*b)
-                    elif p == "/":
-                        stack.append(a/b)
-                    elif p == "%":
-                        stack.append(a%b)
-                    elif p == "**" or p == "^":
-                        stack.append(np.power(a, b))
-                    stacklen -= 1
-                elif p in operations_1_v and stacklen > 0:
-                    a = stack.pop()
-                    if p == "SQRT":
-                        stack.append(np.exp(a))
-                    elif p == "SIN":
-                        stack.append(np.sin(a))
-                    elif p == "COS":
-                        stack.append(np.cos(a))
-                    elif p == "TAN":
-                        stack.append(np.tan(a))
-                    elif p == "ASIN":
-                        stack.append(np.arcsin(a))
-                    elif p == "ACOS":
-                        stack.append(np.arccos(a))
-                    elif p == "ATAN":
-                        stack.append(np.arctan(a))
-                    elif p == "EXP":
-                        stack.append(np.exp(a))
-                elif p in operations_special_numbers:
-                    if p == "pi":
-                        stack.append(np.pi)
-                    stacklen += 1
-                elif p == "":
-                    continue
+                else: #p is string
+                    if p in variableValues.keys() and variableValues[p] is not None:
+                        stack.append(variableValues[p])
+                        stacklen += 1
+                    elif p in operations_2_v and stacklen > 1:
+                        b = stack.pop()
+                        a = stack.pop()
+                        if p == "+":
+                            stack.append(a+b)
+                        elif p == "-":
+                            stack.append(a-b)
+                        elif p == "*":
+                            stack.append(a*b)
+                        elif p == "/":
+                            stack.append(a/b)
+                        elif p == "%":
+                            stack.append(a%b)
+                        elif p == "**" or p == "^":
+                            stack.append(np.power(a, b))
+                        stacklen -= 1
+                    elif p in operations_1_v and stacklen > 0:
+                        a = stack.pop()
+                        if p == "SQRT":
+                            stack.append(np.exp(a))
+                        elif p == "SIN":
+                            stack.append(np.sin(a))
+                        elif p == "COS":
+                            stack.append(np.cos(a))
+                        elif p == "TAN":
+                            stack.append(np.tan(a))
+                        elif p == "ASIN":
+                            stack.append(np.arcsin(a))
+                        elif p == "ACOS":
+                            stack.append(np.arccos(a))
+                        elif p == "ATAN":
+                            stack.append(np.arctan(a))
+                        elif p == "EXP":
+                            stack.append(np.exp(a))
+                    elif p in operations_special_numbers:
+                        if p == "pi":
+                            stack.append(np.pi)
+                        stacklen += 1
+                    elif p == "":
+                        continue
+                    else:
+                        return None
+            if len(stack) != 1:
+                return None
+            if "round" in kwargs and (type(kwargs["round"]) is int or type(kwargs["round"]) is float):
+                return round(stack[0], int(kwargs["round"]))
+            return stack[0]
+        
+        rv = []
+        values_length = []
+        max_length = -1
+        first = True
+        for k in variableValues_list.keys():
+            if type(variableValues_list[k]) is list:
+                l = len(variableValues_list[k])
+                values_length.append((k, l))
+                if l > max_length or first:
+                    first = False
+                    max_length = l
+            else:
+                values_length.append((k, -1))
+        if max_length < 0:
+            rv = single_value_calc(variableValues_list)
+        else:
+            i = 0
+            while i < max_length:
+                vlsc = {}
+                calc_possible = True
+                for ll in values_length:
+                    if ll[1] <= i:
+                        calc_possible = False
+                    else:
+                        vlsc[ll[0]] = variableValues_list[ll[0]][i]
+                if calc_possible:
+                    rv.append(single_value_calc(vlsc))
                 else:
-                    return None
-        if len(stack) != 1:
-            return None
-        if "round" in kwargs and (type(kwargs["round"]) is int or type(kwargs["round"]) is float):
-            return round(stack[0], int(kwargs["round"]))
-        return stack[0]
-
+                    rv.append(None)
+                i += 1
+        return rv
+    
     def str_to_float(self, string):
         def calc(s2):
             if type(s2) is not str:
@@ -223,9 +256,9 @@ class Helper:
     """
     def rounddigits(self, number, round_digits, significant_digits):
         formatstring = None
-        if type(number) is float and type(significant_digits) is int:
+        if type(number) is float and type(significant_digits) is int and significant_digits > 0:
             formatstring = "."+str(significant_digits)+"g"
-        elif type(number) is float and type(round_digits) is int:
+        elif type(number) is float and type(round_digits) is int and round_digits > 0:
             formatstring = "."+str(round_digits)+"f"
         if formatstring is not None:
             return format(number, formatstring)
