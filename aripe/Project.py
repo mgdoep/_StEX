@@ -636,6 +636,30 @@ class Project:
         return text
     
     def GUITableMatrix(self, outputindex):
+        info = self._valuesForGUI(outputindex)
+        a = len(info["col"])
+        l = len(info["col"][0]["values"])
+        for i in range(a):
+            info["col"][a]["values"] = [str(x) for x in info["col"][a]["values"]]
+            info["col"][a]["error"] = [str(x) for x in info["col"][a]["error"]]
+        f = info["error"]
+        eca = self.outputs[outputindex]["error_column_appendix"]
+        rv = []
+        for i in range(a):
+            z = []
+            z.append(info["col"][i]["name"] + " (" + info["col"][i]["unit"]+")\u207b\u00b9")
+            if f:
+                z.append(info["col"][i]["name"] + eca)
+        rv.append(z)
+        for i in range(l):
+            z = []
+            for j in range(a):
+                z.append(info["col"][j]["values"][i])
+                if f:
+                    z.append(info["col"][j]["error"][i])
+            rv.append(z)
+        return rv
+        
         pass
     
     def getReturnData(self, var, filters):

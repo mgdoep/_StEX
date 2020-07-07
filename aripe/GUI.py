@@ -596,8 +596,7 @@ class GUI(QtWidgets.QMainWindow):
 		
 		
 	def showValuesAsList(self, outputindex):
-		
-		pass
+		self.showText(self.Project.valuesForGUIList(outputindex))
 	
 	def plot(self, filename, outputindex):
 		oinfo = self.Project.outputs[outputindex]
@@ -642,14 +641,20 @@ class GUI(QtWidgets.QMainWindow):
 		plt.show()
 		
 	def showValuesAsTable(self, outputindex):
-		self.Table.setRowCount(100)
-		self.Table.setColumnCount(4)
-		for i in range(100):
-			for j in range(4):
-				wi = QtWidgets.QTableWidgetItem(str(i * 4 + j))
+		self.Table.clear()
+		matrix = self.Project.GUITableMatrix(outputindex)
+		rows = len(matrix)
+		cols = len(matrix[0])
+		self.Table.setHorizontalHeaderLabels(matrix[0])
+		self.Table.setRowCount(rows-1)
+		self.Table.setColumnCount(cols-1)
+		for i in range(1, rows):
+			for j in range(1, cols):
+				wi = QtWidgets.QTableWidgetItem(matrix[i][j])
 				self.Table.setItem(i, j, wi)
-		for i in range(4):
+		for i in range(cols):
 			self.Table.resizeColumnToContents(i)
+		self.TableScroll.setVisible(True)
 	
 	def VariableTable(self):
 		box = QtWidgets.QGroupBox("Variablen")
