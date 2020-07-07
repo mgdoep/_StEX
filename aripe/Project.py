@@ -1,4 +1,10 @@
 from datetime import datetime
+try:
+    import matplotlib.pyplot as plt
+    plt_import_success = True
+except ImportError:
+    plt_import_success = False
+
 import os
 path = os.getcwd()
 import importlib
@@ -201,13 +207,29 @@ class Project:
             outputs_xml = root.find("outputs").findall("output")
         except AttributeError:
             pvariables = []
-            return []
+            return [None]*13
         if outputs_xml is not None:
             outputs = []
             for o in outputs_xml:
                 ol = o.attrib
+                
                 try:
-                    if ol["type"].strip() in ["xls", "csv", "table", "list"]:
+                    ol["type"] = ol["type"].lower().strip()
+                except:
+                    continue
+                
+                textsset = False
+                
+                if "text" not in ol.keys():
+                    types = ["xlsx", "csv", "table", "list", "plot"]
+                    texts = ["XLSX-Datei", "CSV-Datei", "Tabelle", "Liste", "Diagramm"]
+                    for i in len(types):
+                        if ol["type"] == types[i]:
+                            ol["text"] = texts[i]
+                    textsset = True
+                
+                try:
+                    if ol["type"].strip() in ["xlsx", "csv", "table", "list"]:
                         col_xml = o.findall("column")
                         collist = []
                         for c in col_xml:
@@ -245,7 +267,7 @@ class Project:
                             del ol["round"]
                     
                     if ol["type"].strip() in ["plot"]:
-                        axislist = []
+                        axislist = {"x": None, "xopt": None, "yopt": None,"y":None}
                         axis_xml = o.findall("axis")
                         foundxy = [False, False]
                         for a in axis_xml:
@@ -253,7 +275,6 @@ class Project:
                             var = a.text.strip()
                             if var not in pvariables:
                                 continue
-                            ae["var"] = var
                             if "type" not in ae.keys():
                                 pass
                             else:
@@ -265,17 +286,48 @@ class Project:
                                         pass
                                     elif ae["type"] == "x":
                                         foundxy[0] = True
-                                        axislist.append(ae)
+                                        axislist["x"] = var
+                                        del ae["type"]
+                                        axislist["xopt"] = ae
                                     else:
                                         foundxy[1] = True
-                                        axislist.append(ae)
-                        if len(axislist) < 2:
+                                        axislist["y"] = var
+                                        del ae["type"]
+                                        axislist["yopt"] = ae
+                                        
+                        if axislist["x"] is None or axislist["y"] is None:
                             continue
                         ol["axis"] = axislist
                         try:
+                            ol["plotoptions"] = o.find("option").text.strip()
+                        except:
+                            ol["plotoptions"] = "ko"
+                        
+                        try:
                             fit_xml = o.find("fit")
                             fitinfo = fit_xml.attrib
-                            fitinfo["options"] = fit_xml.text.strip()
+                            if "type" not in fitinfo:
+                                continue
+                            fitinfo["type"] = fitinfo["type"].lower().strip()
+                            if textsset:
+                                ol["text"] += " mit Kurve"
+                            if "showparameter" in fitinfo.keys():
+                                fitinfo["showparameter"] = "true" in fitinfo["showparameter"].lower()
+                            else:
+                                fitinfo["showparameter"] = False
+                               if "degree" in fitinfo.keys():
+                                try:
+                                    fitinfo["degree"] = int(fitinfo["degree"])
+                                except:
+                                    fitinfo["degree"] = 2
+                            try:
+                                fitinfo["line"] = fit_xml.find("line").text.strip()
+                            except:
+                                fitinfo["line"] = "r-"
+                            try:
+                                fitinfo["envelop"] = fit_xml.find("envelop").text.strip()
+                            except:
+                                fitinfo["envelop"] = None
                             ol["fit"] = fitinfo
                         except:
                             pass
@@ -320,6 +372,10 @@ class Project:
                 cvi = c.attrib
                 cvi["name"] = c.text.strip()
                 cvi["setto"] = self.misc.str_to_float(cvi["setto"])
+                if "getvalue" not in cvi.keys():
+                    cvi["getvalue"] = True
+                else:
+                    cvi["getvalue"] = "man" in cvi["getvalue"].lower().strip()
                 calibrate_for.append(cvi)
         except:
             pass
@@ -390,11 +446,16 @@ class Project:
     def getNumberOfVariables(self):
         return len(self.variables)
     
-    def calibrationFor(self):
-        if len(self.calibrate) > 0:
+    def calibrationFor(self, mode = "all"):
+        if mode == "all" and len(self.calibrate) > 0:
             return self.calibrate
-        else:
-            return []
+        elif len(self.calibrate) > 0:
+            rv = []
+            for c in self.calibrate:
+                if c["getvalue"]:
+                    rv.append(c)
+            return rv
+        return []
     
     def getArduinoValues(self):
         rv = []
@@ -493,7 +554,7 @@ class Project:
         elengths = []
         for i in range(len(self.outputs[outputinfo_index]["columns"])):
             try:
-                columns.append(self.Data.returnValues(self.outputs[outputinfo_index][i], round_to=roundto, significant_digits=sigdit))
+                columns.append(self.Data.returnValues(self.outputs[outputinfo_index]["columns"][i], round_to=roundto, significant_digits=sigdit))
                 lengths.append(len(columns[-1]["values"]))
                 elengths.append(len(columns[-1]["error"]))
             except:
@@ -511,12 +572,11 @@ class Project:
         if oi["type"]=="xls":
             wb = xlsxwriter.Workbook(filename)
             sheet = wb.add_worksheet(self.name)
+            error_shift = 0
+            if oi["error"]:
+                error_shift = 1
             for col in range(anzahl):
                 colindex = col
-                error_shift = 0
-                if oi["error"]:
-                    colindex = 2*col
-                    error_shift = 1
                 sheet.write(0, colindex, columns[i]["name"]+"["+columns[i]["unit"]+"]")
                 if error_shift > 0:
                     sheet.write(0, colindex + 1, columns[i]["name"]+oi["error_column_appendix"])
@@ -543,10 +603,56 @@ class Project:
         return False
     
     def valuesForGUI(self, outputinfo_index):
-        pass #TODO: Implement output for GUI
+        sigdit, roundto = self._getSigDitRoundTo(outputinfo_index)
+        rv = {"error": self.outputs[outputinfo_index]["error"]}
+        l = []
+        for c in self.outputs[outputinfo_index]["columns"]:
+            l.append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit))
+        return rv
     
     def plot(self, filename, outputinfo_index):
-        pass #TODO: Implement plotting
-    
+        oinfo = self.outputs[outputinfo_index]
+        
+        if not plt_import_success:
+            return
+        x_name = oinfo["axis"]["x"]
+        y_name = oinfo["axis"]["y"]
+        if x_name is None or y_name is None:
+            return
+        x_values = []
+        y_values = []
+        if "filter" in self.outputs[outputinfo_index].keys() and len(self.outputs[outputinfo_index]["filter"]) > 0:
+            x_values = self.Data.returnValues(x_name, filters=oinfo["filter"])
+            y_values = self.Data.returnValues(y_name, filters=oinfo["filter"])
+        else:
+            x_values = self.Data.returnValues(x_name)
+            y_values = self.Data.returnValues(y_name)
+        if len(x_values) == 0 or len(y_values) == 0:
+            return
+        plt.plot(x_values, y_values, oinfo["plotoptions"])
+        if "fit" in oinfo.keys():
+            fitinfo = None
+            if oinfo["fit"]["type"] == "poly":
+                fitinfo = self.Data.fit_poly(x_values, y_values, oinfo["fit"]["degree"])
+            if oinfo["fit"]["type"] == "osci":
+                fitinfo = self.Data.fit_osci(x_values, y_values)
+            if oinfo["fit"]["type"] == "damped-osci":
+                fitinfo = self.Data.fit_damped_osci(x_values, y_values)
+            if oinfo["fit"]["type"] == "exp":
+                fitinfo = self.Data.fit_exp(x_values, y_values)
+            if oinfo["fit"]["type"] == "exp-decay":
+                fitinfo = self.Data.fit_exp_decay(x_values, y_values)
+            if fitinfo is not None:
+                plt.plot(fitinfo["xfit"], fitinfo["yfit"], oinfo["fit"]["line"])
+                try:
+                    if "envelop" in oinfo["fit"].keys() and oinfo["fit"]["envelop"] is not None and "envel1" in fitinfo.keys():
+                        plt.plot(fitinfo["xfit"], fitinfo["envel1"], oinfo["fit"]["envelop"])
+                        plt.plot(fitinfo["xfit"], fitinfo["envel2"], oinfo["fit"]["envelop"])
+                except:
+                    pass
+        if oinfo["save"]:
+            plt.savefig(filename, dpi=300)
+        plt.show()
+        
     def printData(self):
         print(self.Data.values)

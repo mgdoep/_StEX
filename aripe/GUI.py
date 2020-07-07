@@ -217,7 +217,7 @@ class GUI(QtWidgets.QMainWindow):
 				self.ImportRawFromFile.setDisabled(False)
 			self.step += 1 #is now 1
 			self.itemToCalibrate = 0
-			self.NumberOfItemsToCalibrate = len(self.Project.calibrationFor())
+			self.NumberOfItemsToCalibrate = len(self.Project.calibrationFor(mode="man"))
 			if self.NumberOfItemsToCalibrate == 0:
 				self.step = 2
 				self.startMeasurement()

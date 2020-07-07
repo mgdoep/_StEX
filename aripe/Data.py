@@ -18,6 +18,7 @@ from time import time
 from os import getcwd
 path = getcwd()
 import importlib
+import numpy as np
 Helper = importlib.import_module("Helper", path+"Helper.py")
 Project = importlib.import_module("Project", path+"Project.py")
 
@@ -1216,3 +1217,113 @@ class Data:
             info["errorrule"] = self.errorrule[v]
             rv.append(info)
         return rv
+    
+    def calibrateVariable(self, variablename, set_value, init_value=None):
+        if init_value is None:
+            i = 0
+            while  init_value is None and i < len(self.values[variablename]):
+                if self.values[variablename][i] is not None:
+                    init_value = self.values[variablename][i]
+                i += 1
+        if init_value is None:
+            return
+        diff = init_value - set_value
+        for i in range(len(self.values[variablename])):
+            if self.values[variablename][i] is not None:
+                self.values[variablename][i] -= diff
+        
+                
+            
+    
+    """
+    fit_damped_osci
+    returns a dict with the fit parameter for a damped oscillator and the following keys:
+    "a": amplitude of the fit; "ae": error for amplitude
+    "d": decay fit; "de": error for decay
+    "f": angular frequency; "fe": error for angular frequency
+    "p": phase shift; "pe": error of phase shift
+    "o": offest of y; "oe": error of offset
+    
+    """
+    
+    def fit_damped_osci(self, t, y):
+        try:
+            from scipy.optimize import leastsq
+        except ImportError:
+            return None
+        rv = {}
+        optimize_func = lambda z: z[0] * np.exp(z[1] * t) * np.sin(z[2] * t + z[3]) + z[4] - y
+
+        guess_off = np.mean(y)
+        guess_p = 0
+        guess_o = 1
+        guess_d = 0.02
+        guess_A = 2
+
+        p0 = np.array([guess_A, guess_d, guess_o, guess_p, guess_off])
+
+        fit, cov, infodict, errmsg, success = leastsq(optimize_func, p0, full_output=1)
+
+        if cov is not None:
+            s_sq = (optimize_func(fit) ** 2).sum() / (len(y) - len(p0))
+            cov = cov * s_sq
+
+        try:
+            error = np.sqrt(np.diag(cov))
+        except:
+            error = [None] * len(fit)
+
+        try:
+            rv["a"], rv["d"], rv["f"], rv["p"], rv["o"] = fit
+        except:
+            return None
+        
+        rv["ae"], rv["de"], rv["fe"], rv["pe"], rv["oe"] = error
+        
+        while rv["p"] > 2.0*np.pi:
+            rv["p"] -= 2.0*np.pi
+        while rv["p"] < 0:
+            rv["p"] += 2.0*np.pi
+        
+        xmin, xmax = np.min(t), np.max(t)
+        xfit = np.arange(xmin, xmax, (xmax-xmin)/1001.0, dtype=np.float64)
+        yfit = rv["a"]*np.exp(rv["d"]*xfit)*np.sin(rv["f"]*xfit + rv["p"])+rv["o"]
+        yeinh = rv["a"]*np.exp(rv["d"]*xfit)+rv["o"]
+        yeinh2 = (-1)*yeinh+2*rv["o"]
+        
+        rv["xfit"] = xfit
+        rv["yfit"] = yfit
+        rv["envel1"] = yeinh
+        rv["envel2"] = yeinh2
+        
+        return rv
+    
+    def fit_poly(self, t, y, deg):
+        
+        f, r, a, cov, v= np.polyfit(t, y, deg, full=True)
+        r = r / len(y)
+        cov = np.sqrt(cov * r[0])
+        
+        xmin, xmax = np.min(t), np.max(t)
+        xfit = np.arange(xmin, xmax, (xmax - xmin) / 1001.0, dtype=np.float64)
+        if deg == 1:
+            yfit = f[0]*xfit+f[1]
+        elif deg == 2:
+            yfit = f[0]*xfit**2 + f[1]*xfit + f[2]
+        elif deg == 3:
+            yfit = f[0]*xfit**3 + f[1]*xfit**2 + f[2]*xfit + f[3]
+        elif deg == 4:
+            yfit = f[0]*xfit**4 + f[1]*xfit**3 + f[2]*xfit**2 + f[3]*xfit + f[4]
+        else:
+            yfit = [0.0]*len(xfit)
+
+        return {"values": f, "errors": cov, "xfit": xfit, "yfit": yfit}
+    
+    def fit_osci(self, t, y):
+        pass #TODO implement
+    
+    def fit_exp(self, t, y):
+        pass #TODO implement
+    
+    def fit_exp_decay(self, t, y):
+        pass #TODO implement
