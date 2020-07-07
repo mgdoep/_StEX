@@ -11,7 +11,11 @@ Project = importlib.import_module("Project", path+"Project.py")
 Helper = importlib.import_module("Helper", path+"Helper.py")
 Arduino = importlib.import_module("Arduino", path+"Arduino.py")
 
-
+matplot_success = True
+try:
+	import matplotlib.pyplot as plt
+except ImportError:
+	matplot_success = False
 
 class GUI(QtWidgets.QMainWindow):
 	def __init__(self):
@@ -45,6 +49,7 @@ class GUI(QtWidgets.QMainWindow):
 
 		self.setWindowTitle("aripe")
 		self.setGeometry(100,100,600,600)
+		self.setMinimumSize(600, 600)
 		self.ArduinoIsRunning = True
 		
 		#menuebar
@@ -156,13 +161,29 @@ class GUI(QtWidgets.QMainWindow):
 		self.LabelMessungInProgress.setStyleSheet("color: red")
 		self.LabelMessungInProgress.adjustSize()
 		self.LabelMessungInProgress.setVisible(False)
-			
+		
+		
+		self.TextArea = QtWidgets.QPlainTextEdit(self)
+		self.TextArea.setReadOnly(True)
+		self.TextArea.setMinimumSize(300, 300)
+		self.TextArea.setMaximumSize(300, 300)
+		self.TextArea.move(self.size().width()-350, self.size().height()-350)
+		self.TextArea.setPlainText("\u03c9 = 0.42 \n \u00b7")
+		self.TextArea.setVisible(False)
+		
+		self.TableScroll = QtWidgets.QScrollArea(self)
+		self.TableScroll.setMinimumSize(300, 300)
+		self.Table = QtWidgets.QTableWidget(self.TableScroll)
+		self.Table.setMinimumSize(300, 300)
+		self.TableScroll.setVisible(False)
 		#self.ManualInputButton.setVisible(False)
 		
 		#print(self.ManualInput1_Label.size().width())
 		#self.setMouseTracking(True)
 		
 		self.inProgress = True
+		
+		
 		
 
 		self.show()
@@ -190,25 +211,10 @@ class GUI(QtWidgets.QMainWindow):
 					while i < len(outputforms):
 						x = 20
 						y = 30 + 40 * i
-						if outputforms[i]["type"].lower() == "xls":
-							b = QtWidgets.QPushButton("Excel-Tabelle", self)
-						elif outputforms[i]["type"].lower() == "csv":
-							b = QtWidgets.QPushButton("CSV-Tabelle", self)
-						elif outputforms[i]["type"].lower() == "plot":
-							if "fit" in outputforms[i].keys():
-								b = QtWidgets.QPushButton("Diagramm mit Fit", self)
-							else:
-								b = QtWidgets.QPushButton("Diagramm", self)
-						elif outputforms[i]["list"] and len(outputforms) < 2:
-							b = QtWidgets.QPushButton("Liste", self)
-						elif outputforms[i]["table"] and len(outputforms) < 2:
-							b = QtWidgets.QPushButton("Tabelle", self)
-						else:
-							i += 1
-							continue
+						b = QtWidgets.QPushButton(outputforms[i]["text"], self)
 						b.adjustSize()
+						b.resize(b.size().width()+8, b.size().height()+8)
 						b.move(x, y)
-						#b.setDisabled(True)
 						b.setVisible(False)
 						b.clicked.connect(self.getOutput)
 						self.buttons_output.append([b, (x,y), i])
@@ -525,6 +531,9 @@ class GUI(QtWidgets.QMainWindow):
 	def getOutput(self):
 		outputindex = -1
 		coming_from = self.sender().pos()
+		self.TextArea.setVisible(False)
+		self.TableScroll.setVisible(False)
+		
 		for v in self.buttons_output:
 			if coming_from.x() == v[1][0] and coming_from.y() == y[1][1]:
 				outputindex = v[1][2]
@@ -550,7 +559,7 @@ class GUI(QtWidgets.QMainWindow):
 				if typ in ["cls", "xls"]:
 					self.Project.exportToFile(filename, outputindex)
 				else:
-					self.Project.plot(filename, outputindex)
+					self.plot(filename, outputindex)
 			elif typ == "list":
 				self.showValuesAsList(outputindex)
 			else:
@@ -578,12 +587,69 @@ class GUI(QtWidgets.QMainWindow):
 				self.timer.start(100)
 			else:
 				self.timer.start(1000)
-			
+	
+	def showText(self, text):
+		self.TextArea.setPlainText(text)
+		x = self.size().width() - 350
+		y = self.size().height() - 350
+		self.TextArea.setVisible(True)
+		
+		
 	def showValuesAsList(self, outputindex):
+		
 		pass
 	
+	def plot(self, filename, outputindex):
+		oinfo = self.Project.outputs[outputindex]
+		
+		if not matplot_success:
+			return
+		x_name = oinfo["axis"]["x"]
+		y_name = oinfo["axis"]["y"]
+		x_unit = self.Project.var_unit(x_name)
+		y_unit = self.Project.var_unit(y_name)
+		if x_name is None or y_name is None:
+			return
+		x_values = []
+		y_values = []
+		if "filter" in self.outputs[outputindex].keys() and len(self.outputs[outputindex]["filter"]) > 0:
+			x_values = self.Data.returnValues(x_name, filters=oinfo["filter"])
+			y_values = self.Data.returnValues(y_name, filters=oinfo["filter"])
+		else:
+			x_values = self.Data.returnValues(x_name)
+			y_values = self.Data.returnValues(y_name)
+		if len(x_values) == 0 or len(y_values) == 0:
+			return
+		plt.plot(x_values, y_values, oinfo["plotoptions"])
+		plt.xlabel(x_name + " [" + x_unit.strip() + "]")
+		plt.ylabel(y_name + "[" + y_unit.strip() + "]")
+		if "fit" in oinfo.keys():
+			fitinfo = self.Project.getfitparam(x_values, y_values, outputindex)
+			if fitinfo is not None:
+				plt.plot(fitinfo["xfit"], fitinfo["yfit"], oinfo["fit"]["line"])
+				if oinfo["fit"]["showparameter"]:
+					if oinfo["fit"]["type"] == "poly":
+						fittext = self.Project.getFitText(fitinfo, oinfo["fit"]["type"], x_name, y_name, x_unit, y_unit, option=oinfo["fit"]["degree"])
+						self.showText(fittext)
+				try:
+					if "envelop" in oinfo["fit"].keys() and oinfo["fit"]["envelop"] is not None and "envel1" in fitinfo.keys():
+						plt.plot(fitinfo["xfit"], fitinfo["envel1"], oinfo["fit"]["envelop"])
+						plt.plot(fitinfo["xfit"], fitinfo["envel2"], oinfo["fit"]["envelop"])
+				except:
+					pass
+		if oinfo["save"]:
+			plt.savefig(filename, dpi=300)
+		plt.show()
+		
 	def showValuesAsTable(self, outputindex):
-		pass
+		self.Table.setRowCount(100)
+		self.Table.setColumnCount(4)
+		for i in range(100):
+			for j in range(4):
+				wi = QtWidgets.QTableWidgetItem(str(i * 4 + j))
+				self.Table.setItem(i, j, wi)
+		for i in range(4):
+			self.Table.resizeColumnToContents(i)
 	
 	def VariableTable(self):
 		box = QtWidgets.QGroupBox("Variablen")

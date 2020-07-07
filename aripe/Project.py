@@ -315,11 +315,11 @@ class Project:
                                 fitinfo["showparameter"] = "true" in fitinfo["showparameter"].lower()
                             else:
                                 fitinfo["showparameter"] = False
-                               if "degree" in fitinfo.keys():
-                                try:
-                                    fitinfo["degree"] = int(fitinfo["degree"])
-                                except:
-                                    fitinfo["degree"] = 2
+                                if "degree" in fitinfo.keys():
+                                    try:
+                                        fitinfo["degree"] = int(fitinfo["degree"])
+                                    except:
+                                        fitinfo["degree"] = 2
                             try:
                                 fitinfo["line"] = fit_xml.find("line").text.strip()
                             except:
@@ -602,57 +602,124 @@ class Project:
             return True
         return False
     
-    def valuesForGUI(self, outputinfo_index):
+    def _valuesForGUI(self, outputinfo_index):
         sigdit, roundto = self._getSigDitRoundTo(outputinfo_index)
-        rv = {"error": self.outputs[outputinfo_index]["error"]}
-        l = []
+        rv = {"error": self.outputs[outputinfo_index]["error"], "col": []}
+        fan = "filter" in self.outputs[outputinfo_index].keys()
         for c in self.outputs[outputinfo_index]["columns"]:
-            l.append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit))
+            if fan:
+                rv["col"].append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit, filters=self.outputs[outputinfo_index]["filter"]))
+            else:
+                rv["col"].append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit))
         return rv
     
-    def plot(self, filename, outputinfo_index):
-        oinfo = self.outputs[outputinfo_index]
+    def valuesForGUIList(self, outputindex):
+        c = {"pm": " \u00b1 ", ".": "\u00b7", "n": "\n"}
+        info = self._valuesForGUI(outputindex)
+        a = len(info["col"])
+        for i in range(a):
+            info["col"][a]["values"] = [str(x) for x in info["col"][a]["values"]]
+            info["col"][a]["error"] = [str(x) for x in info["col"][a]["error"]]
+        text = ""
+        l = len(info["col"][0]["values"])
+        f = info["error"]
+        for i in range(l):
+            for j in range(a):
+                text += info["col"][j]["name"] + " = "
+                if f:
+                    text += "("
+                text += info["col"][j]["values"][i] + " "
+                if f:
+                    text += c["pm"] + " " + info["col"][j]["error"] + ") "
+                text += info["col"][j]["unit"] + " ;"
+            text += "\n"
+        return text
+    
+    def GUITableMatrix(self, outputindex):
+        pass
+    
+    def getReturnData(self, var, filters):
+        return self.Data.returnValues(var, filters=filters)
+    
+    def getfitparam(self, x_values, y_values, outputindex):
+        fitinfo = None
+        oinfo = self.outputs[outputindex]
+        if oinfo["fit"]["type"] == "poly":
+            fitinfo = self.Data.fit_poly(x_values, y_values, oinfo["fit"]["degree"])
+        if oinfo["fit"]["type"] == "osci":
+            fitinfo = self.Data.fit_osci(x_values, y_values)
+        if oinfo["fit"]["type"] == "damped-osci":
+            fitinfo = self.Data.fit_damped_osci(x_values, y_values)
+        if "exp" in oinfo["fit"]["type"]:
+            dec = "damped" in oinfo["fit"]["type"]
+            fitinfo = self.Data.fit_exp(x_values, y_values, decay=dec)
+        return fitinfo
+    
+    def var_unit(self, varname):
+        return self.Data.unit[varname]
+    
+    def getFitText(self, fitinfo, fittype, x_name, y_name, x_unit, y_unit):
+        c = {"pm": " \u00b1 ", "sm": "\u207b", "s1": "\u00b9", "s2": "\u00b2", "s3": "\u00b3", "s4": "\u2074",
+             "w": "\u03c9", "p": "\u03c6", "d": "\u03b4", "D": "\u0394", "n": "\n", ".": "\u00b7",
+             ".(": "\u00b7(", ")m": ")\u207b", "y0m": " + " + y_name+"\u2080 mit: \n", "yd": "\u0177", "y0": y_name+"\u2080"}
         
-        if not plt_import_success:
-            return
-        x_name = oinfo["axis"]["x"]
-        y_name = oinfo["axis"]["y"]
-        if x_name is None or y_name is None:
-            return
-        x_values = []
-        y_values = []
-        if "filter" in self.outputs[outputinfo_index].keys() and len(self.outputs[outputinfo_index]["filter"]) > 0:
-            x_values = self.Data.returnValues(x_name, filters=oinfo["filter"])
-            y_values = self.Data.returnValues(y_name, filters=oinfo["filter"])
-        else:
-            x_values = self.Data.returnValues(x_name)
-            y_values = self.Data.returnValues(y_name)
-        if len(x_values) == 0 or len(y_values) == 0:
-            return
-        plt.plot(x_values, y_values, oinfo["plotoptions"])
-        if "fit" in oinfo.keys():
-            fitinfo = None
-            if oinfo["fit"]["type"] == "poly":
-                fitinfo = self.Data.fit_poly(x_values, y_values, oinfo["fit"]["degree"])
-            if oinfo["fit"]["type"] == "osci":
-                fitinfo = self.Data.fit_osci(x_values, y_values)
-            if oinfo["fit"]["type"] == "damped-osci":
-                fitinfo = self.Data.fit_damped_osci(x_values, y_values)
-            if oinfo["fit"]["type"] == "exp":
-                fitinfo = self.Data.fit_exp(x_values, y_values)
-            if oinfo["fit"]["type"] == "exp-decay":
-                fitinfo = self.Data.fit_exp_decay(x_values, y_values)
-            if fitinfo is not None:
-                plt.plot(fitinfo["xfit"], fitinfo["yfit"], oinfo["fit"]["line"])
-                try:
-                    if "envelop" in oinfo["fit"].keys() and oinfo["fit"]["envelop"] is not None and "envel1" in fitinfo.keys():
-                        plt.plot(fitinfo["xfit"], fitinfo["envel1"], oinfo["fit"]["envelop"])
-                        plt.plot(fitinfo["xfit"], fitinfo["envel2"], oinfo["fit"]["envelop"])
-                except:
-                    pass
-        if oinfo["save"]:
-            plt.savefig(filename, dpi=300)
-        plt.show()
+        fittext = y_name + " = "
         
+        if fittype == "poly":
+            fitinfo["values"] = [str(x) for x in fitinfo["values"]]
+            fitinfo["errors"] = [str(x) for x in fitinfo["errors"]]
+            deg = len(fitinfo["values"]) - 1
+            if deg == 1:
+                fittext += "m\u00b7" + x_name + c["y0m"]
+                fittext += "m = (" + fitinfo["values"][0] + c["pm"] + fitinfo["errors"][0] + ") " + y_unit + c[".("] + x_unit + c[")m"] + c["s1"] + c["n"]
+                fittext += c["y0"] +" = (" + fitinfo["values"][1] + c["pm"] + fitinfo["errors"][1] + ") " + y_unit
+            elif deg == 2:
+                fittext += "a"+c["."]+x_name+c["s2"]+" + b"+c["."]+x_name+ c["y0m"]
+                fittext += "a = (" + fitinfo["values"][0] + c["pm"] + fitinfo["errors"][0] + ") " + y_unit + c[".("] + x_unit + c[")m"] + c["s2"] + c["n"]
+                fittext += "b = (" + fitinfo["values"][1] + c["pm"] + fitinfo["errors"][1] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s1"] + c["n"]
+                fittext += c["y0"] +" =  (" + fitinfo["values"][2] + c["pm"] + fitinfo["errors"][2] + ") " + y_unit
+            elif deg == 3:
+                fittext += "a" + c["."] + x_name + c["s3"] + " + b" + c["."] + x_name + c["s2"] + " + c" + c["."] + x_name + c["y0m"]
+                fittext += "a = (" + fitinfo["values"][0] + c["pm"] + fitinfo["errors"][0] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s3"] + c["n"]
+                fittext += "b = (" + fitinfo["values"][1] + c["pm"] + fitinfo["errors"][1] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s2"] + c["n"]
+                fittext += "c = (" + fitinfo["values"][2] + c["pm"] + fitinfo["errors"][2] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s1"] + c["n"]
+                fittext += c["y0"] +" =  (" + fitinfo["values"][3] + c["pm"] + fitinfo["errors"][2] + ") " + y_unit
+            else:
+                fittext += "a" + c["."] + x_name + c["s4"] + " + b" + c["."] + x_name + c["s3"]
+                " + c" + c["."] + x_name + c["s2"] + " + d " + c["."] + x_name + c["y0m"]
+                fittext += "a = (" + fitinfo["values"][0] + c["pm"] + fitinfo["errors"][0] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s4"] + c["n"]
+                fittext += "b = (" + fitinfo["values"][1] + c["pm"] + fitinfo["errors"][1] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s3"] + c["n"]
+                fittext += "c = (" + fitinfo["values"][2] + c["pm"] + fitinfo["errors"][2] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s2"] + c["n"]
+                fittext += "d = (" + fitinfo["values"][3] + c["pm"] + fitinfo["errors"][3] + ") " + y_unit + c[
+                    ".("] + x_unit + c[")m"] + c["s1"] + c["n"]
+                fittext += c["y0"] +" = (" + fitinfo["values"][4] + c["pm"] + fitinfo["errors"][4] + ") " + y_unit
+        if fittype == "osci":
+            for k in fitinfo.keys():
+                fitinfo[k] = str(fitinfo[k])
+            fittext += c["yd"] + c["."] + "sin("+c["w"] + c["."] + x_name + " + " + c["p"] + ")" + c["y0m"]
+            fittext += c["yd"] + " = (" + fitinfo["a"] + c["pm"] + fitinfo["ae"] + ") " + y_unit + c["n"]
+            fittext += c["w"] + " = (" + fitinfo["w"] + c["pm"] + fitinfo["we"] + ") rad" + c[".("] + x_unit + c[")m"]+ c["s1"] + c["n"]
+            fittext += c["p"] + " = (" + fitinfo["p"] + c["pm"] + fitinfo["pe"] + ") rad"
+            fittext += c["y0"] + " = (" + fitinfo["o"] + c["pm"] + fitinfo["oe"] + ") "+y_unit
+        
+        if fittype == "damped-osci":
+            for k in fitinfo.keys():
+                fitinfo[k] = str(fitinfo[k])
+            fittext += c["yd"] + c["."] + "exp("+ c["d"] + c["."] + x_name +") " + c["."] +" sin(" +c["w"] + c["."] + x_name + " + " + c["p"] + ")" + c["y0m"]
+            fittext += c["yd"] + " = (" + fitinfo["a"] + c["pm"] + fitinfo["ae"] + ") " + y_unit + c["n"]
+            fittext += c["d"] + " = (" + fitinfo["d"] + c["pm"] + fitinfo["de"] + ") (" + x_unit + c[")m"] + \
+                       c["s1"] + c["n"]
+            fittext += c["w"] + " = (" + fitinfo["w"] + c["pm"] + fitinfo["we"] + ") rad" + c[".("] + x_unit + c[")m"]+ c["s1"] + c["n"]
+            fittext += c["p"] + " = (" + fitinfo["p"] + c["pm"] + fitinfo["pe"] + ") rad"
+            fittext += c["y0"] + " = (" + fitinfo["o"] + c["pm"] + fitinfo["oe"] + ") "+y_unit
+        return fittext
+    
     def printData(self):
         print(self.Data.values)

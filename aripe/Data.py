@@ -1274,11 +1274,11 @@ class Data:
             error = [None] * len(fit)
 
         try:
-            rv["a"], rv["d"], rv["f"], rv["p"], rv["o"] = fit
+            rv["a"], rv["d"], rv["w"], rv["p"], rv["o"] = fit
         except:
             return None
         
-        rv["ae"], rv["de"], rv["fe"], rv["pe"], rv["oe"] = error
+        rv["ae"], rv["de"], rv["we"], rv["pe"], rv["oe"] = error
         
         while rv["p"] > 2.0*np.pi:
             rv["p"] -= 2.0*np.pi
@@ -1287,7 +1287,7 @@ class Data:
         
         xmin, xmax = np.min(t), np.max(t)
         xfit = np.arange(xmin, xmax, (xmax-xmin)/1001.0, dtype=np.float64)
-        yfit = rv["a"]*np.exp(rv["d"]*xfit)*np.sin(rv["f"]*xfit + rv["p"])+rv["o"]
+        yfit = rv["a"]*np.exp(rv["d"]*xfit)*np.sin(rv["w"]*xfit + rv["p"])+rv["o"]
         yeinh = rv["a"]*np.exp(rv["d"]*xfit)+rv["o"]
         yeinh2 = (-1)*yeinh+2*rv["o"]
         
@@ -1299,7 +1299,6 @@ class Data:
         return rv
     
     def fit_poly(self, t, y, deg):
-        
         f, r, a, cov, v= np.polyfit(t, y, deg, full=True)
         r = r / len(y)
         cov = np.sqrt(cov * r[0])
@@ -1320,10 +1319,13 @@ class Data:
         return {"values": f, "errors": cov, "xfit": xfit, "yfit": yfit}
     
     def fit_osci(self, t, y):
+        rv = {"a": 1, "ae": 2, "w": 3, "we": 4, "p": 5, "pe": 6, "o": 7, "oe": 8}
+        # y = a*sin(wt+p)+o
         pass #TODO implement
     
-    def fit_exp(self, t, y):
+    def fit_exp(self, t, y, decay=True):
+        rv = {"a": 1, "ae": 2, "d": 3, "de": 4, "o": 1, "oe": 5}
+        # y = a*exp(dt)+0
         pass #TODO implement
     
-    def fit_exp_decay(self, t, y):
-        pass #TODO implement
+    

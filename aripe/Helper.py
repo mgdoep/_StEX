@@ -264,6 +264,10 @@ class Helper:
             return format(number, formatstring)
         return number
     
+    """def rounddigits_with_error(self, vals, errs, rd=None, sig=None, errorsens = True):
+        errs1 = [str(self.rounddigits(x, rd, sig)) for x in errs]
+       """
+    
     """
     getSerialPorts
     Returns a list of the available Serialports: for each port, the list contains a list l with the follwing information:
