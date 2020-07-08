@@ -244,7 +244,6 @@ class GUI(QtWidgets.QMainWindow):
 			
 	
 	def getLiveValue(self) -> None:
-		print("Yo")
 		if self.MeasureMode < 1:
 			line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
 		
@@ -323,11 +322,6 @@ class GUI(QtWidgets.QMainWindow):
 			self.timer.disconnect()
 		except:
 			pass
-		if self.MeasureMode == 1:
-			self.ArduinoStopEvent.set()
-			loop = QtCore.QEventLoop()					#Warte 500ms, falls Arduino-Klasse gerade schreibt
-			QtCore.QTimer.singleShot(500, loop.quit)
-			loop.exec_()
 		if self.MeasureMode == 0:
 			for v in self.manInputFields:
 				v.setVisible(False)
@@ -535,8 +529,9 @@ class GUI(QtWidgets.QMainWindow):
 		self.TableScroll.setVisible(False)
 		
 		for v in self.buttons_output:
-			if coming_from.x() == v[1][0] and coming_from.y() == y[1][1]:
-				outputindex = v[1][2]
+			if coming_from.x() == v[1][0] and coming_from.y() == v[1][1]:
+				print(v[2])
+				outputindex = v[2] #v[1][2]
 				break
 		if outputindex > -1:
 			typ = self.Project.outputs[outputindex]["type"]
@@ -611,12 +606,12 @@ class GUI(QtWidgets.QMainWindow):
 			return
 		x_values = []
 		y_values = []
-		if "filter" in self.outputs[outputindex].keys() and len(self.outputs[outputindex]["filter"]) > 0:
-			x_values = self.Data.returnValues(x_name, filters=oinfo["filter"])
-			y_values = self.Data.returnValues(y_name, filters=oinfo["filter"])
+		if "filter" in oinfo.keys() and len(oinfo["filter"]) > 0:
+			x_values = self.Project.getReturnData(x_name, filters=oinfo["filter"])["values"]
+			y_values = self.Project.getReturnData(y_name, filters=oinfo["filter"])["values"]
 		else:
-			x_values = self.Data.returnValues(x_name)
-			y_values = self.Data.returnValues(y_name)
+			x_values = self.Project.getReturnData(x_name, filters=[])["values"]
+			y_values = self.Project.getReturnData(y_name, filters=[])["values"]
 		if len(x_values) == 0 or len(y_values) == 0:
 			return
 		plt.plot(x_values, y_values, oinfo["plotoptions"])
@@ -628,7 +623,7 @@ class GUI(QtWidgets.QMainWindow):
 				plt.plot(fitinfo["xfit"], fitinfo["yfit"], oinfo["fit"]["line"])
 				if oinfo["fit"]["showparameter"]:
 					if oinfo["fit"]["type"] == "poly":
-						fittext = self.Project.getFitText(fitinfo, oinfo["fit"]["type"], x_name, y_name, x_unit, y_unit, option=oinfo["fit"]["degree"])
+						fittext = self.Project.getFitText(fitinfo, oinfo["fit"]["type"], x_name, y_name, x_unit, y_unit)
 						self.showText(fittext)
 				try:
 					if "envelop" in oinfo["fit"].keys() and oinfo["fit"]["envelop"] is not None and "envel1" in fitinfo.keys():

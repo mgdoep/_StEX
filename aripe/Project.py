@@ -127,8 +127,11 @@ class Project:
                 pass
             if ardProtocol is None:
                 return []
-
-        filters = root.find("filters").findall("filter")
+        
+        try:
+            filters = root.find("filters").findall("filter")
+        except AttributeError:
+            filters = []
         filter_list = []
         for f in filters:
             fi = f.attrib
@@ -223,7 +226,7 @@ class Project:
                 if "text" not in ol.keys():
                     types = ["xlsx", "csv", "table", "list", "plot"]
                     texts = ["XLSX-Datei", "CSV-Datei", "Tabelle", "Liste", "Diagramm"]
-                    for i in len(types):
+                    for i in range(len(types)):
                         if ol["type"] == types[i]:
                             ol["text"] = texts[i]
                     textsset = True
@@ -273,7 +276,12 @@ class Project:
                         for a in axis_xml:
                             ae = a.attrib
                             var = a.text.strip()
-                            if var not in pvariables:
+                            found = False
+                            for pv in pvariables:
+                                if var == pv["name"]:
+                                    found = True
+                            if not found:
+                                print("Variable", var, "nicht in definiert.")
                                 continue
                             if "type" not in ae.keys():
                                 pass
@@ -315,11 +323,11 @@ class Project:
                                 fitinfo["showparameter"] = "true" in fitinfo["showparameter"].lower()
                             else:
                                 fitinfo["showparameter"] = False
-                                if "degree" in fitinfo.keys():
-                                    try:
-                                        fitinfo["degree"] = int(fitinfo["degree"])
-                                    except:
-                                        fitinfo["degree"] = 2
+                            if "degree" in fitinfo.keys():
+                                try:
+                                    fitinfo["degree"] = int(fitinfo["degree"])
+                                except:
+                                    fitinfo["degree"] = 2
                             try:
                                 fitinfo["line"] = fit_xml.find("line").text.strip()
                             except:
@@ -372,6 +380,8 @@ class Project:
                 cvi = c.attrib
                 cvi["name"] = c.text.strip()
                 cvi["setto"] = self.misc.str_to_float(cvi["setto"])
+                if cvi["setto"] is None:
+                    print("Kalibrierung konnte für", cvi["name"],"nicht definiert werden. Der angegebene Wert für \"setto\" konnte nicht in Zah konvertiert werden.")
                 if "getvalue" not in cvi.keys():
                     cvi["getvalue"] = True
                 else:
@@ -508,20 +518,34 @@ class Project:
     
     def addManualValues(self, vars):
         self.Data.addValues(vars)
+    
+    def applyFilters(self):
+        for f in self.filters:
+            bo = None
+            if "basedon" in f.keys():
+                bo = f["basedon"]
+            if f["type"] == "crop":
+                self.Data.cropDataSet(f["start"], f["ende"], TimeVariable=f["variable"], name=f["name"], once=f["type"] == "croponce")
+            elif f["type"] == "number":
+                self.Data.applyNumberFilter(f["name"], f["value"], f["variable"], basedon=bo)
+            elif f["type"] == "step":
+                self.Data.applyStepFilter(f["name"], f["value"], f["variable"], basedon=bo)
         
     def MeasurementPostProcessing(self, valTrans=True):
         if valTrans:
             self.Data.valueTransformation()
+        self.calibrateVariables()
         for v in self.variables:
             if v["method"] == "calculation":
                 self.Data.calculateVariable(v["name"], v["formula"])
-    
+        self.applyFilters()
+
     def importRAW(self, filename):
         vl = []
         for v in self.variables:
             if v["method"] == "arduino":
                 vl.append((v["name"], v["ardCol"]))
-        return self.Data.getValuesFromRawFile(filename, vl)
+        return self.Data.getValuesFromRawFile(filename, vl, self.ardProtocol)
     
     def _getSigDitRoundTo(self, index):
         sigdit, roundto = -1, -1
@@ -663,7 +687,7 @@ class Project:
         pass
     
     def getReturnData(self, var, filters):
-        return self.Data.returnValues(var, filters=filters)
+        return self.Data.returnValue(var, filters=filters)
     
     def getfitparam(self, x_values, y_values, outputindex):
         fitinfo = None
@@ -681,6 +705,17 @@ class Project:
     
     def var_unit(self, varname):
         return self.Data.unit[varname]
+    
+    def calibrateVariables(self):
+        for c in self.calibrate:
+            if "cvalue" in c.keys():
+                if c["getvalue"] and c["cvalue"] is None:
+                    print("Calibration für Variable", c["name"], "nicht möglich! Ausgangswert ist <None>!")
+                    continue
+                self.Data.calibrateVariable(c["name"], c["setto"], init_value=c["cvalue"])
+            else:
+                self.Data.calibrateVariable(c["name"], c["setto"], init_value=None)
+
     
     def getFitText(self, fitinfo, fittype, x_name, y_name, x_unit, y_unit):
         c = {"pm": " \u00b1 ", "sm": "\u207b", "s1": "\u00b9", "s2": "\u00b2", "s3": "\u00b3", "s4": "\u2074",
@@ -747,3 +782,4 @@ class Project:
     
     def printData(self):
         print(self.Data.values)
+        

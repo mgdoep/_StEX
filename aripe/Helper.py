@@ -131,6 +131,7 @@ class Helper:
                     if p in variableValues.keys() and variableValues[p] is not None:
                         stack.append(variableValues[p])
                         stacklen += 1
+                        
                     elif p in operations_2_v and stacklen > 1:
                         b = stack.pop()
                         a = stack.pop()
@@ -175,6 +176,7 @@ class Helper:
                         return None
             if len(stack) != 1:
                 return None
+            
             if "round" in kwargs and (type(kwargs["round"]) is int or type(kwargs["round"]) is float):
                 return round(stack[0], int(kwargs["round"]))
             return stack[0]
@@ -283,7 +285,6 @@ class Helper:
         return rv
     
     def getCurrentValue(self):
-        print("M")
         return self.currentValues
     
     def setCurrentValue(self, v):

@@ -767,12 +767,17 @@ class Data:
             hasNone = False
             for v in vars_in_string:
                 varval[v] = self.values[v][i]
+                if varname == "s":
+                    print(v, varval[v], self.values["tlh"][i])
                 if self.values[v][i] is None:
                     hasNone = True
             if not hasNone:
                 results.append(self.misc.calculate_using_RPN(RPN_String, varval))
             else:
                 results.append(None)
+        if varname == "tlh":
+            print("jetzt", self.values["t"])
+        print(varname, RPN_String, type(results[0]))
         self.values[varname] = results
         
     
@@ -810,8 +815,7 @@ class Data:
         vn = variablename.strip()
         if vn not in self.values.keys():
             return None
-        
-        if fils is None:
+        if fils is None or len(fils) == 0:
             rvval = [self.misc.rounddigits(x, rounding_to, significant_digits) for x in self.values[vn]]
             rverr = []
             if type(self.errorrule[vn]) is None:
@@ -848,6 +852,9 @@ class Data:
                         else:
                             rverr.append(None)
                 i += 1
+        for v in self.values.keys():
+            print(v, self.values[v])
+            print("\n==\n")
         rv = {"values": rvval, "error": rverr, "unit": self.unit[vn], "name": variablename}
         return rv
 
@@ -972,6 +979,7 @@ class Data:
     Parameter
     """
     def cropDataSet(self, start, end, TimeVariable="SYS_Time", name="crop", enforce=True, once=False):
+        
         if name in self.filter.keys() and not enforce:
             return False
         if TimeVariable not in self.values.keys():
@@ -1164,7 +1172,7 @@ class Data:
             index += 1
         filter_list = self.turnIndexToFilterList(index_list, len(self.values[var]))
         if filter_list > 0:
-            self.filter["name"] = filter_list
+            self.filter[name] = filter_list
             return True
         return False
     
@@ -1226,6 +1234,7 @@ class Data:
                     init_value = self.values[variablename][i]
                 i += 1
         if init_value is None:
+            print("Kalibrierung für", variablename, "nicht möglich. Es konnte kein Anfangswert bestimmt werden.")
             return
         diff = init_value - set_value
         for i in range(len(self.values[variablename])):
