@@ -26,6 +26,9 @@ class Project:
             self.filters = xmlinfo[13]
             if len(self.variables) > 0:
                 self.Data = Data.Data(self.variables)
+            file=open("/home/martin/aktuell/projImp.txt", "w")
+            file.write(str(self.variables) + "\n\n" + str(self.outputs) +"\n\n" + str(self.filters))
+            file.close()
         else:
             self.name, self.Institution = "", ""
             self.variables, self.outputs = None, None
@@ -98,6 +101,7 @@ class Project:
                 if vi["method"] == "calculation":
                     vi["formula"] = v.find("name").attrib["formula"].strip()
                 vi["unit"] = v.find("unit").text.strip()
+                vi["unit"] = self._charstouni(vi["unit"])
                 vi["errorrule"] = v.find("errorrule").text.strip()
             except AttributeError:
                 continue
@@ -236,8 +240,9 @@ class Project:
                         col_xml = o.findall("column")
                         collist = []
                         for c in col_xml:
-                            if c.text.strip() not in pvariables:
-                                continue
+                            for pv in pvariables:
+                                if c.text.strip() != pv["name"]:
+                                    continue
                             collist.append(c.text.strip())
                         ol["columns"] = collist
                     
@@ -346,7 +351,12 @@ class Project:
                         i = 0
                         while i < lofl:
                             ofl[i] = ofl[i].strip()
-                            if ofl[i] not in filter_list:
+                            filnotfound = True
+                            for f in filter_list:
+                                if ofl[i] == f["name"]:
+                                    filnotfound = False
+                                
+                            if filnotfound:
                                 del ofl[i]
                                 lofl -= 1
                             else:
@@ -355,6 +365,7 @@ class Project:
                 except:
                     continue
                 outputs.append(ol)
+            
             name = ""
             try:
                 name = root.find("name").text
@@ -429,6 +440,17 @@ class Project:
         
         
         rv = [name, institution, pvariables, outputs, ardProtocol, ardErrorProtocol, ardBaud, ardSeperator, ardSleep, standardFolder, tempFolder, calibrate_for, startstop, filter_list]
+        return rv
+    
+    def _charstouni(self, s):
+        rv = ""
+        unicode = {"-": "\u207b", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074", "5": "\u2075", "6": "\u2076",
+                   "7": "\u2077", "8": "\u2078", "9": "\u2079", "*": "\u00b7"}
+        for c in s:
+            if c in unicode.keys():
+                rv += unicode[c]
+            else:
+                rv += c
         return rv
 
     def addConributor(self, name):
@@ -521,10 +543,12 @@ class Project:
     
     def applyFilters(self):
         for f in self.filters:
+            print(str(f))
+            print("crop" in self.Data.filter.keys())
             bo = None
             if "basedon" in f.keys():
                 bo = f["basedon"]
-            if f["type"] == "crop":
+            if "crop" in f["type"]:
                 self.Data.cropDataSet(f["start"], f["ende"], TimeVariable=f["variable"], name=f["name"], once=f["type"] == "croponce")
             elif f["type"] == "number":
                 self.Data.applyNumberFilter(f["name"], f["value"], f["variable"], basedon=bo)
@@ -568,32 +592,35 @@ class Project:
     def exportToFile(self, filename, outputinfo_index):
         sigdit, roundto = self._getSigDitRoundTo(outputinfo_index)
         oi = self.outputs[outputinfo_index]
-        if oi["type"] == "xls":
+        if oi["type"] == "xlsx":
             try:
                 import xlsxwriter
             except:
-                return False
+                return False, 0
         columns = []
         lengths = []
         elengths = []
         for i in range(len(self.outputs[outputinfo_index]["columns"])):
             try:
-                columns.append(self.Data.returnValues(self.outputs[outputinfo_index]["columns"][i], round_to=roundto, significant_digits=sigdit))
+                vals = self.Data.returnValue(self.outputs[outputinfo_index]["columns"][i], round_to=roundto, significant_digits=sigdit)
+                vals["values"] = [str(x) for x in vals["values"]]
+                vals["error"] = [str(x) for x in vals["error"]]
+                columns.append(vals)
                 lengths.append(len(columns[-1]["values"]))
                 elengths.append(len(columns[-1]["error"]))
             except:
-                pass
+                return False, 0
         anzahl = len(columns)
         max_length = max(lengths)
         if anzahl < 1:
             return False
         
-        if oi["type"]=="xls":
+        if oi["type"]=="xlsx":
             filename = self._getSmoothFileNameForExport(filename, "xlsx")
         if oi["type"]=="cvs":
             filename = self._getSmoothFileNameForExport(filename, "csv")
         
-        if oi["type"]=="xls":
+        if oi["type"]=="xlsx":
             wb = xlsxwriter.Workbook(filename)
             sheet = wb.add_worksheet(self.name)
             error_shift = 0
@@ -601,15 +628,17 @@ class Project:
                 error_shift = 1
             for col in range(anzahl):
                 colindex = col
-                sheet.write(0, colindex, columns[i]["name"]+"["+columns[i]["unit"]+"]")
                 if error_shift > 0:
-                    sheet.write(0, colindex + 1, columns[i]["name"]+oi["error_column_appendix"])
+                    colindex = 2*col
+                sheet.write(0, colindex, columns[col]["name"]+"["+columns[col]["unit"]+"]")
+                if error_shift > 0:
+                    sheet.write(0, colindex + 1, columns[col]["name"]+oi["error_column_appendix"])
                 for j in range(lengths[col]):
-                    sheet.write(j+1, colindex, columns[i]["values"][j])
+                    sheet.write(j+1, colindex, columns[col]["values"][j])
                     if error_shift > 0 and j < elengths[col]:
-                        sheet.write(j+1, colindex+1, columns[i]["error"][j])
+                        sheet.write(j+1, colindex+1, columns[col]["error"][j])
             wb.close()
-            return True
+            return True, filename
         if oi["type"] == "csv":
             file = open(filename, "w")
             for i in range(anzahl):
@@ -622,9 +651,18 @@ class Project:
                         file.write(oi["seperator"])
                 if i == anzahl - 1:
                     file.write("\n")
+            for i in range(max_length):
+                for j in range(anzahl):
+                    if i < lengths[j]:
+                        file.write(columns[j]["values"][i])
+                    if oi["error"]:
+                        file.write(oi["seperator"]+columns[j]["error"][i])
+                    if j < anzahl-1:
+                        file.write(oi["seperator"])
+                file.write("\n")
             file.close()
-            return True
-        return False
+            return True, filename
+        return False, 0
     
     def _valuesForGUI(self, outputinfo_index):
         sigdit, roundto = self._getSigDitRoundTo(outputinfo_index)
@@ -632,9 +670,9 @@ class Project:
         fan = "filter" in self.outputs[outputinfo_index].keys()
         for c in self.outputs[outputinfo_index]["columns"]:
             if fan:
-                rv["col"].append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit, filters=self.outputs[outputinfo_index]["filter"]))
+                rv["col"].append(self.Data.returnValue(c, round_to=roundto, significant_digits=sigdit, filters=self.outputs[outputinfo_index]["filter"]))
             else:
-                rv["col"].append(self.Data.returnValues(c, round_to=roundto, significant_digits=sigdit))
+                rv["col"].append(self.Data.returnValue(c, round_to=roundto, significant_digits=sigdit))
         return rv
     
     def valuesForGUIList(self, outputindex):
@@ -642,13 +680,17 @@ class Project:
         info = self._valuesForGUI(outputindex)
         a = len(info["col"])
         for i in range(a):
-            info["col"][a]["values"] = [str(x) for x in info["col"][a]["values"]]
-            info["col"][a]["error"] = [str(x) for x in info["col"][a]["error"]]
-        text = ""
+            info["col"][i]["values"] = [str(x) for x in info["col"][i]["values"]]
+            info["col"][i]["error"] = [str(x) for x in info["col"][i]["error"]]
+        text = "<ul style=\"list-style-type: circle;\">\n"
+        #text = ""
         l = len(info["col"][0]["values"])
         f = info["error"]
         for i in range(l):
             for j in range(a):
+                #text += info["col"][j]["name"] + " = "
+                if j == 0:
+                    text += "<li>&#x2022; "
                 text += info["col"][j]["name"] + " = "
                 if f:
                     text += "("
@@ -656,7 +698,9 @@ class Project:
                 if f:
                     text += c["pm"] + " " + info["col"][j]["error"] + ") "
                 text += info["col"][j]["unit"] + " ;"
-            text += "\n"
+            if j == a-1:
+                text += "</li>\n"
+        text += "</ul>"
         return text
     
     def GUITableMatrix(self, outputindex):
@@ -664,14 +708,14 @@ class Project:
         a = len(info["col"])
         l = len(info["col"][0]["values"])
         for i in range(a):
-            info["col"][a]["values"] = [str(x) for x in info["col"][a]["values"]]
-            info["col"][a]["error"] = [str(x) for x in info["col"][a]["error"]]
+            info["col"][i]["values"] = [str(x) for x in info["col"][i]["values"]]
+            info["col"][i]["error"] = [str(x) for x in info["col"][i]["error"]]
         f = info["error"]
         eca = self.outputs[outputindex]["error_column_appendix"]
         rv = []
+        z = []
         for i in range(a):
-            z = []
-            z.append(info["col"][i]["name"] + " (" + info["col"][i]["unit"]+")\u207b\u00b9")
+            z.append(info["col"][i]["name"] + "\u00b7(" + info["col"][i]["unit"]+")\u207b\u00b9")
             if f:
                 z.append(info["col"][i]["name"] + eca)
         rv.append(z)

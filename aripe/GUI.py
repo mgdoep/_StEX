@@ -171,11 +171,14 @@ class GUI(QtWidgets.QMainWindow):
 		self.TextArea.setPlainText("\u03c9 = 0.42 \n \u00b7")
 		self.TextArea.setVisible(False)
 		
-		self.TableScroll = QtWidgets.QScrollArea(self)
-		self.TableScroll.setMinimumSize(300, 300)
-		self.Table = QtWidgets.QTableWidget(self.TableScroll)
-		self.Table.setMinimumSize(300, 300)
-		self.TableScroll.setVisible(False)
+		#self.TableScroll = QtWidgets.QScrollArea(self)
+		#self.TableScroll.setMinimumSize(300, 300)
+		#self.Table = QtWidgets.QTableWidget(self.TableScroll)
+		self.Table = QtWidgets.QTableWidget(self)
+		
+		#self.Table.setMinimumSize(300, 300)
+		#self.TableScroll.setVisible(False)
+		self.Table.setVisible(False)
 		#self.ManualInputButton.setVisible(False)
 		
 		#print(self.ManualInput1_Label.size().width())
@@ -526,21 +529,21 @@ class GUI(QtWidgets.QMainWindow):
 		outputindex = -1
 		coming_from = self.sender().pos()
 		self.TextArea.setVisible(False)
-		self.TableScroll.setVisible(False)
+		#self.TableScroll.setVisible(False)
+		self.Table.setVisible(False)
 		
 		for v in self.buttons_output:
 			if coming_from.x() == v[1][0] and coming_from.y() == v[1][1]:
-				print(v[2])
 				outputindex = v[2] #v[1][2]
 				break
 		if outputindex > -1:
 			typ = self.Project.outputs[outputindex]["type"]
 			filename = ""
-			if typ in ["csv", "xls", "plot"]:
+			if typ in ["csv", "xlsx", "plot"]:
 				fil = ("Tabelle speichern", "CSV-Dateien", "csv")
 				saveit = True
-				if typ == "xls":
-					fil = ("Excel-Tabelle speichern", "Excel-Dateien", "xls")
+				if typ == "xlsx":
+					fil = ("Excel-Tabelle speichern", "Excel-Dateien", "xlsx")
 				if typ == "plot":
 					fil = ("Plot speichern", "PNG-Bilder", "png")
 					saveit = self.Project.outputs[outputindex]["save"]
@@ -551,8 +554,33 @@ class GUI(QtWidgets.QMainWindow):
 							filename = filename + "." + fil[2]
 					except:
 						filename = filename + "." + fil[2]
-				if typ in ["cls", "xls"]:
-					self.Project.exportToFile(filename, outputindex)
+				if typ in ["csv", "xlsx"]:
+					succ, path = self.Project.exportToFile(filename, outputindex)
+					
+					if succ:
+						diag_text_s = "CSV-Datei \"" + path + "\" wurde erfolgreich erstellt."
+					diag_text_f = "CSV-Datei konnte nicht erstellt werden."
+					head_s = "Erfolg!"
+					head_f = "Fehler!"
+					if typ == "xlsx":
+						if succ:
+							diag_text_s = "Excel-Datei \"" + path + "\" wurde erfolgreich erstellt."
+						diag_text_f = "Excel-Datei konnte nicht erstellt werden."
+					
+					if succ:
+						dialog = QtWidgets.QMessageBox()
+						dialog.setIcon(QtWidgets.QMessageBox.Information)
+						dialog.setText(diag_text_s)
+						dialog.setWindowTitle(head_s)
+						dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+						returnValue = dialog.exec_()
+					else:
+						dialog = QtWidgets.QMessageBox()
+						dialog.setIcon(QtWidgets.QMessageBox.Warning)
+						dialog.setText(diag_text_f)
+						dialog.setWindowTitle(head_f)
+						dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+						returnValue = dialog.exec_()
 				else:
 					self.plot(filename, outputindex)
 			elif typ == "list":
@@ -583,15 +611,19 @@ class GUI(QtWidgets.QMainWindow):
 			else:
 				self.timer.start(1000)
 	
-	def showText(self, text):
-		self.TextArea.setPlainText(text)
+	def showText(self, text, html=False):
+		self.TextArea.clear()
+		if html:
+			self.TextArea.appendHtml(text)
+		else:
+			self.TextArea.setPlainText(text)
 		x = self.size().width() - 350
 		y = self.size().height() - 350
 		self.TextArea.setVisible(True)
 		
 		
 	def showValuesAsList(self, outputindex):
-		self.showText(self.Project.valuesForGUIList(outputindex))
+		self.showText(self.Project.valuesForGUIList(outputindex), html = True)
 	
 	def plot(self, filename, outputindex):
 		oinfo = self.Project.outputs[outputindex]
@@ -637,19 +669,38 @@ class GUI(QtWidgets.QMainWindow):
 		
 	def showValuesAsTable(self, outputindex):
 		self.Table.clear()
+		self.Table.setStyleSheet("padding: 10px")
 		matrix = self.Project.GUITableMatrix(outputindex)
 		rows = len(matrix)
 		cols = len(matrix[0])
-		self.Table.setHorizontalHeaderLabels(matrix[0])
-		self.Table.setRowCount(rows-1)
-		self.Table.setColumnCount(cols-1)
-		for i in range(1, rows):
-			for j in range(1, cols):
+		self.Table.setRowCount(rows)
+		self.Table.setColumnCount(cols)
+		for i in range(rows):
+			for j in range(cols):
 				wi = QtWidgets.QTableWidgetItem(matrix[i][j])
 				self.Table.setItem(i, j, wi)
 		for i in range(cols):
 			self.Table.resizeColumnToContents(i)
-		self.TableScroll.setVisible(True)
+		tw, th = 0, 0
+		b, h = self.size().width(), self.size().height() - 100
+		self.Table.setMaximumSize(b - 250, h)
+		self.Table.setVisible(True)
+		for i in range(cols):
+			tw += self.Table.columnWidth(i)
+		if self.Table.verticalScrollBar().isVisible():
+			tw += self.Table.verticalScrollBar().width()
+		for i in range(rows):
+			th += self.Table.rowHeight(i)
+		if self.Table.horizontalScrollBar().isVisible():
+			th += self.Table.horizontalScrollBar().height()
+		self.Table.verticalHeader().setVisible(False)
+		self.Table.horizontalHeader().setVisible(False)
+		
+		self.Table.setMinimumSize(tw+10, th+10)
+		self.Table.setMaximumSize(b, h)
+		x, y = th-50, tw-50
+		self.Table.move(x, y)
+		self.Table.setVisible(True)
 	
 	def VariableTable(self):
 		box = QtWidgets.QGroupBox("Variablen")

@@ -596,7 +596,6 @@ class Data:
                 imported_units.append(li[1].split("]")[0].strip())
             else:
                 imported_units.append("")
-        print(imported_variables)
         SYS_Time_provided = "SYS_Time" in imported_variables
         for i in range(number_of_columns):
             if rv_is_list and (is_defined[i] or add_unknown):
@@ -767,17 +766,12 @@ class Data:
             hasNone = False
             for v in vars_in_string:
                 varval[v] = self.values[v][i]
-                if varname == "s":
-                    print(v, varval[v], self.values["tlh"][i])
                 if self.values[v][i] is None:
                     hasNone = True
             if not hasNone:
                 results.append(self.misc.calculate_using_RPN(RPN_String, varval))
             else:
                 results.append(None)
-        if varname == "tlh":
-            print("jetzt", self.values["t"])
-        print(varname, RPN_String, type(results[0]))
         self.values[varname] = results
         
     
@@ -797,7 +791,7 @@ class Data:
     """
 
     def returnValue(self, variablename, **kwargs):
-        rounding_to = None
+        rounding_to = []
         significant_digits = None
         fils = None
         if "round_to" in kwargs:
@@ -809,9 +803,10 @@ class Data:
                 fils = [kwargs["filters"]]
             if type(kwargs["filters"]) is list:
                 fils = kwargs["filters"]
-        for f in fils:
-            if f not in self.filter.keys():
-                fils.remove(f)
+        
+            for f in fils:
+                if f not in self.filter.keys():
+                    fils.remove(f)
         vn = variablename.strip()
         if vn not in self.values.keys():
             return None
@@ -852,9 +847,6 @@ class Data:
                         else:
                             rverr.append(None)
                 i += 1
-        for v in self.values.keys():
-            print(v, self.values[v])
-            print("\n==\n")
         rv = {"values": rvval, "error": rverr, "unit": self.unit[vn], "name": variablename}
         return rv
 
@@ -1114,6 +1106,8 @@ class Data:
         if type(variable) is list:
             var = var[0]
         length, start, ende = len(self.values[var]), 0, len(self.values[var])-1
+        if length == 0:
+            return False
         indexlist = []
         if basedon is not None:
             length, start, ende = self._getStartStopIndexForFiltersBasedon(basedon)
@@ -1207,7 +1201,6 @@ class Data:
                     vl.append({"name": v[0], "value": ls[int(v[1])], "error": 0.0})
             except:
                 success -= 1
-                print("Damn")
                 continue
             if not self.addValues(vl):
                 success -= 1
