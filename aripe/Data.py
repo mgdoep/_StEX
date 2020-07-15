@@ -126,7 +126,7 @@ class Data:
     def _ini_helper_error(self, errorinfo):
         rv = 0.0
         if type(errorinfo) is str:
-            if errorinfo == "" or errorinfo.lower() == "manual":
+            if errorinfo == "" or errorinfo.lower() == "manual" or errorinfo.lower()=="none":
                 return None
             else:
                 rv = self.misc.str_to_float(errorinfo)

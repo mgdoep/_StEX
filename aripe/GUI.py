@@ -282,6 +282,7 @@ class GUI(QtWidgets.QMainWindow):
 					
 		if self.step == 2 and self.MeasureMode == 0:
 			self.currentArduinoValues = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
+			
 			#for i in range(self.number_live_values):
 			#	self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
 			self.timer.setSingleShot(True)

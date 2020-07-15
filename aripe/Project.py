@@ -246,8 +246,11 @@ class Project:
                             collist.append(c.text.strip())
                         ol["columns"] = collist
                     
-                    if "error_column_appendix" not in ol.keys():
+                    if "eca" not in ol.keys():
                         ol["error_column_appendix"] = "_Fehler"
+                    else:
+                        ol["error_column_appendix"] = ol["eca"]
+                        del ol["eca"]
                     
                     if "seperator" not in ol.keys():
                         ol["seperator"] = ","
@@ -411,7 +414,8 @@ class Project:
         except:
             pass
         
-        startstop = {"start_button": True, "start_countdown": False, "start_delay": 0, "stop_button": True, "stop_after": False, "stop_time": 0}
+        startstop = {"start_button": True, "start_countdown": False, "start_delay": 0,
+                     "stop_button": True, "stop_after": False, "stop_variable": None, "stop_time": 0, "stop_value": None}
         try:
             st = root.find("start")
             if st.attrib["type"].strip().lower() == "countdown":
@@ -434,6 +438,20 @@ class Project:
                 startstop["stop_after"] = True
                 startstop["stop_button"] = False
                 startstop["stop_time"] = int(st.text.strip())
+            if st.attrib["type"].strip().lower() == "value":
+                try:
+                    var = st.attrib["variable"].strip()
+                    possible = False
+                    for v in pvariables:
+                        if v["name"] == var and v["type"] == "arduino":
+                            possible = True
+                    if possible:
+                        startstop["stop_value"] = self.misc.str_to_float(st.text)
+                        if startstop["stop_value"] is not None:
+                            startstop["stop_variable"] = var
+                            startstop["stop_button"] =False
+                except:
+                    pass
         except:
             pass
         
@@ -528,7 +546,7 @@ class Project:
             if v["method"] == "manual":
                 ita = {"name": v["name"], "unit": v["unit"], "getErrorValue": False}
                 for v2 in self.getVariables():
-                    if v["name"] == v2["name"] and v2["errorrule"] is None:
+                    if v["name"] == v2["name"] and v2["errorrule"] is None and v["errorrule"].lower().strip() != "none":
                         ita["getErrorValue"] = True
                 rv["manual"].append(ita)
                 
@@ -549,7 +567,7 @@ class Project:
             if "basedon" in f.keys():
                 bo = f["basedon"]
             if "crop" in f["type"]:
-                self.Data.cropDataSet(f["start"], f["ende"], TimeVariable=f["variable"], name=f["name"], once=f["type"] == "croponce")
+                self.Data.cropDataSet(f["start"], f["ende"], TimeVariable=f["variable"], name=f["name"], once=f["type"]=="croponce")
             elif f["type"] == "number":
                 self.Data.applyNumberFilter(f["name"], f["value"], f["variable"], basedon=bo)
             elif f["type"] == "step":
@@ -826,4 +844,4 @@ class Project:
     
     def printData(self):
         print(self.Data.values)
-        
+    
