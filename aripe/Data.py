@@ -791,11 +791,13 @@ class Data:
     """
 
     def returnValue(self, variablename, **kwargs):
-        rounding_to = []
+        rounding_to = None
         significant_digits = None
         fils = None
         if "round_to" in kwargs:
             rounding_to = kwargs["round_to"]
+            if rounding_to < 0:
+                rounding_to = None
         if "significant_digits" in kwargs:
             significant_digits = kwargs["significant_digits"]
         if "filters" in kwargs:
@@ -836,7 +838,7 @@ class Data:
                     if self.filter[f][i]:
                         add = True
                 if add:
-                    rvval.append(self.values[vn][i])
+                    rvval.append(self.misc.rounddigits(self.values[vn][i], rounding_to, significant_digits))
                     if type(self.errorrule[vn]) is None:
                         rverr.append(self.error[vn][i])
                     elif type(self.errorrule[vn]) is float:

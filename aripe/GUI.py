@@ -5,11 +5,17 @@ from threading import Event
 from PyQt5.QtGui import QIcon
 import sys
 import os
+serial_import = False
+try:
+	from serial import Serial
+	serial_import = True
+except ImportError:
+	serial_import = False
+
 path = os.getcwd()
 import importlib
 Project = importlib.import_module("Project", path+"Project.py")
 Helper = importlib.import_module("Helper", path+"Helper.py")
-Arduino = importlib.import_module("Arduino", path+"Arduino.py")
 
 matplot_success = True
 try:
@@ -29,7 +35,12 @@ class GUI(QtWidgets.QMainWindow):
 		self.currentArduinoValues = []
 		self.isRunning = False
 		self.startTime = 0
-		self.ArduinoStopEvent = Event()
+		self.cvs = ""
+		self.RAWFileName = ""
+		self.startValue = None
+		self.stopIfLarger = True
+		self.stopValue = None
+		self.stopValueCol = None
 		self.setupUi()
 	
 	def setupUi(self):
@@ -102,6 +113,10 @@ class GUI(QtWidgets.QMainWindow):
 		self.button_endMeasurement.pressed.connect(self.EndMeasure)
 		self.button_endMeasurement.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 		self.button_endMeasurement.move(20,70)
+		self.button_endMeasurement.adjustSize()
+		w = self.button_endMeasurement.size().width() + 10
+		h = self.button_endMeasurement.size().height() + 10
+		self.button_endMeasurement.setFixedSize(w, h)
 		self.button_endMeasurement.setVisible(False)
 		
 		self.button_Kalibriere = QtWidgets.QPushButton("Kalibriere", self)
@@ -184,11 +199,31 @@ class GUI(QtWidgets.QMainWindow):
 		#print(self.ManualInput1_Label.size().width())
 		#self.setMouseTracking(True)
 		
+		self.ardChooseLabel = QtWidgets.QLabel(self)
+		self.ardChooseLabel.setFont(self.font_bold)
+		self.ardChooseLabel.setText("Bitte wählen Sie einen Mikrocontroller aus.")
+		self.ardChooseLabel.adjustSize()
+		self.ardChooseLabel.move(30, 40)
+		self.ardChooseLabel.setVisible(False)
+		
+		self.arduinooptions = QtWidgets.QComboBox(self)
+		self.arduinooptions.setGeometry(QtCore.QRect(30, 30, 181, 22))
+		self.arduinooptions.move(30, 70)
+		self.arduinooptions.setVisible(False)
+		
+		self.arduinochoose = QtWidgets.QPushButton(self)
+		self.arduinochoose.setText("wählen")
+		self.arduinochoose.clicked.connect(self.AChoose)
+		self.arduinochoose.move(250, 70)
+		self.arduinochoose.setVisible(False)
+		
+		
+		
 		self.inProgress = True
 		
 		
 		
-
+		
 		self.show()
 		
 			
@@ -245,10 +280,25 @@ class GUI(QtWidgets.QMainWindow):
 			self.timer.start(20)
 		
 			
+	def getCurrentFromArduino(self):
+		rv = []
+		self.Arduino.flushInput()
+		misses = 0
+		errorous = True
+		while misses < 10 and errorous:
+			try:
+				line = str(self.Arduino.readline().decode()).split(self.Project.ardSeperator)
+				if line[0].strip() == self.Project.ardProtocol and (
+						"\n" in line[-1] or "\r" in line[-1]):  # Checks whether the line is complete
+					return line
+			except:
+				misses += 1
+		return []
+	
 	
 	def getLiveValue(self) -> None:
 		if self.MeasureMode < 1:
-			line = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
+			line = self.getCurrentFromArduino()
 		
 		if self.step == 1:
 			self.Label_LiveWertName.setText(self.liveValueText)
@@ -279,17 +329,48 @@ class GUI(QtWidgets.QMainWindow):
 				self.Label_LiveWert.setVisible(True)
 				if self.itemToCalibrate < self.NumberOfItemsToCalibrate:
 					self.calibrate()
-					
 		if self.step == 2 and self.MeasureMode == 0:
-			self.currentArduinoValues = self.Arduino.readCurrent(self.Project.ardProtocol, seperator=self.Project.ardSeperator)
-			
-			#for i in range(self.number_live_values):
-			#	self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
+			self.currentArduinoValues = self.getCurrentFromArduino()
+			for i in range(self.number_live_values):
+				self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
 			self.timer.setSingleShot(True)
 			self.timer.start(250)
 		
 		if self.step == 2 and self.MeasureMode > 0:
-			self.UpDateLiveMeter()
+			s = self.Arduino.read_all().decode()
+			self.cvs += s
+			file = open(self.RAWFileName, "a")
+			file.write(s)
+			file.close()
+			try:
+				cvss = self.cvs.split("\n")[0]
+				if len(cvss) > 0:
+					self.currentArduinoValues=self.cvs.split("\n")[0].split(self.Project.ardSeperator)
+					if self.startValue is None:
+						self.stopValueCol, self.stopValue = self.Project.getStopVariableCol()
+						if self.stopValueCol < 0:
+							self.startValue = 0
+						else:
+							try:
+								if len(self.currentArduinoValues) > self.stopValueCol:
+									self.startValue = self.currentArduinoValues[self.stopValueCol]
+									if self.startValue > self.stopValue:
+										self.stopIfLarger = False
+							except:
+								self.startValue = None
+								self.stopValueCol = None
+					elif self.stopValueCol is not None:
+						if len(self.currentArduinoValues) > self.stopValueCol:
+							if self.stopIfLarger and self.currentArduinoValues[self.stopValueCol] > self.stopValue:
+								self.timer.stop()
+								self.EndMeasure()
+							elif not self.stopIfLarger and self.currentArduinoValues[self.stopValueCol] < self.stopValue:
+								self.timer.stop()
+								self.EndMeasure()
+					self.cvs = ""
+					self.UpDateLiveMeter()
+			except:
+				pass
 			if self.Project.control["stop_after"]:
 				if self.isRunning:
 					if time()-self.startTime > self.Project.control["stop_time"]+0.2:
@@ -298,21 +379,16 @@ class GUI(QtWidgets.QMainWindow):
 				else:
 					self.startTime = time()
 					self.isRunning = True
-					if self.Project.ardSleep > 0:
-						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["stop_time"], sleep_time=self.Project.ardSleep)
-					else:
-						self.Arduino.readContinously(self.Project.TempFolder, time=self.Project.control["time"])
+			elif not self.Project.control["stop_button"]: #value
+				#get start value
+				if not self.isRunning:
+					self.isRunning = True
 			else:
 				if not self.isRunning:
 					self.isRunning = True
-					if self.Project.ardSleep > 0:
-						self.Arduino.readContinously(self.Project.TempFolder, sleep_time=self.Project.ardSleep)
-					else:
-						self.Arduino.readContinously(self.Project.TempFolder)
-			
 			self.timer.stop()
 			self.timer.setSingleShot(False)
-			self.timer.start(500)
+			self.timer.start(100)
 			
 	def saveLiveValue(self):
 		if self.step == 1 and self.currentLiveValue != "NIL" and not self.isSet:
@@ -341,12 +417,12 @@ class GUI(QtWidgets.QMainWindow):
 		for v in self.LiveValueLabel:
 			v.setVisible(False)
 		vT = True
-		self.button_Beenden.setVisible(False)
+		self.button_endMeasurement.setVisible(False)
 		self.LabelMessungInProgress.setVisible(False)
 		if self.MeasureMode == 1:
 			dialog = QtWidgets.QMessageBox()
 			dialog.setIcon(QtWidgets.QMessageBox.Information)
-			dialog.setText(self.Project.importRAW(self.Arduino.getRawFileName()) + " Werte erfolgreich importiert.")
+			dialog.setText(self.Project.importRAW(self.RAWFileName) + " Werte erfolgreich importiert.")
 			dialog.setWindowTitle("Datenimport abgeschlossen")
 			dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
 			returnValue = dialog.exec_()
@@ -372,6 +448,7 @@ class GUI(QtWidgets.QMainWindow):
 			self.Project.addManualValues(valimport)
 			
 	def startMeasurement(self):
+		self.ImportRawFromFile.setEnabled(True)
 		if self.step == 2:
 			self.vars, self.number_manual_variables, self.number_live_values = self.Project.ManualArduinoVariables()
 			i = 0
@@ -505,9 +582,12 @@ class GUI(QtWidgets.QMainWindow):
 		self.button_startMeasurement.setVisible(False)
 		self.CountDownLabel.setVisible(False)
 		if self.Project.control["stop_button"]:
-			self.button_Beenden.setVisible(True)
-			self.button_Beenden.setEnabled(True)
-			self.button_Beenden.clicked.connect(self.EndMeasure)
+			x = self.size().width() // 2 - self.button_endMeasurement.size().width() // 2
+			y = self.size().height() // 2 - self.button_endMeasurement.size().height() // 2
+			self.button_endMeasurement.move(x,y)
+			self.button_endMeasurement.setVisible(True)
+			self.button_endMeasurement.setEnabled(True)
+			self.button_endMeasurement.clicked.connect(self.EndMeasure)
 		
 		#self.button_endMeasurement.setVisible(True)
 		
@@ -518,6 +598,9 @@ class GUI(QtWidgets.QMainWindow):
 			self.timer.timeout.disconnect()
 		except:
 			pass
+		self.RAWFileName = self.Project.TempFolder + "t"+str(round(time())%10000000)+".raw"
+		if self.Project.usesArduino():
+			self.Arduino.flushInput()
 		self.timer.timeout.connect(self.getLiveValue)
 		self.timer.setSingleShot(True)
 		self.timer.start(10)
@@ -699,8 +782,10 @@ class GUI(QtWidgets.QMainWindow):
 		
 		self.Table.setMinimumSize(tw+10, th+10)
 		self.Table.setMaximumSize(b, h)
-		x, y = th-50, tw-50
+		#x, y = th-50, tw-50
+		x, y = self.size().width()-250, 50
 		self.Table.move(x, y)
+		self.Table.setAutoScroll(True)
 		self.Table.setVisible(True)
 	
 	def VariableTable(self):
@@ -724,17 +809,31 @@ class GUI(QtWidgets.QMainWindow):
 		box.setVisible(True)
 	
 	def importRaw(self):
-		name = QFileDialog.getOpenFileName(self, "RAW-Datei wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")
-		self.Project.importRAW(name)
-	
+		self.RAWFileName = QFileDialog.getOpenFileName(self, "RAW-Datei wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")[0]
+		self.button_startMeasurement.setVisible(False)
+		self.EndMeasure()
+		
 	def updateLive(self, v):
 		self.LiveValues = v
 		
 	def getArduino(self):
 		p = self.misc.getSerialPorts()
 		if len(p) == 1 and self.Project.getBaud() > 0:
-			self.Arduino = Arduino.Arduino(p[0][0], self.Project.getBaud(), self.misc, self.ArduinoStopEvent, self)
-			self.Arduino.start()
+			self.Arduino = Serial(p[0][0], self.Project.getBaud())
+		elif len(p) > 0 and self.Project.getBaud() > 0:
+			self.arduinochoose.setVisible(True)
+			self.arduinooptions.setVisible(True)
+			self.ardChooseLabel.setVisible(True)
+			for pp in p:
+				self.arduinooptions.addItem(pp[1] + " - " + pp[0])
+		else:
+			msg = QtWidgets.QMessageBox()
+			msg.setIcon(QtWidgets.QMessageBox.Critical)
+			msg.setText("Kein Arduino angeschlossen")
+			msg.setInformativeText("Es ist kein Gerät angeschlossen. Bitte schließen Sie das Programm, schließen Sie den Arduino an und starten Sie das Programm neu.")
+			msg.setWindowTitle("Hardwarefehler")
+			msg.exec_()
+			self.button_startMeasurement.setDisabled(True)
 
 	def UpDateLiveMeter(self):
 		canupdate = True
@@ -748,6 +847,39 @@ class GUI(QtWidgets.QMainWindow):
 					self.LiveValueMeter[i].setText(livevallist[self.LiveValueColumns[i]])
 				except:
 					pass
+	
+	def _checkProtocol(self):
+		errors = 0
+		rv = False
+		input = ""
+		while errors < 5 and not rv:
+			input += str(Serial.read_all().decode())
+			errors += 1
+			try:
+				isp = input.split("\n")
+				if len(isp) > 2:
+					ptk = isp[1].split(self.Project.ardSeperator)[0]
+					if ptk == self.Project.ardProtocol or ptk == self.Project.ardEProtocol:
+						rv = True
+			except:
+				pass
+			sleep(self.Project.ardSleep)
+		return rv
+	
+	def AChoose(self):
+		self.arduinochoose.setDisabled(True)
+		port = str(self.arduinooptions.currentText()).split(" - ")[1]
+		self.Arduino = Serial(port, self.Project.getBaud())
+		if not self._checkProtocol():
+			self.Arduino.close()
+			msg = QtWidgets.QMessageBox()
+			msg.setIcon(QtWidgets.QMessageBox.Critical)
+			msg.setText("Falsches Protokoll")
+			msg.setInformativeText(
+				"Der angeschlossene Arduino sendet nicht das korrekte Protokoll. Bitte versuchen Sie es noch einmal erneut und prüfen Sie bei nochmaligem Fehler das Programm des Arduino.")
+			msg.setWindowTitle("Protokollfehler")
+			msg.exec_()
+			self.arduinochoose.setEnabled(True)
 				
 app = QtWidgets.QApplication(sys.argv)
 ex = GUI()

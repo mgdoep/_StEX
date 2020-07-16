@@ -289,4 +289,3 @@ class Helper:
     
     def setCurrentValue(self, v):
         self.currentValues = v
-    

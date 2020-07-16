@@ -8,6 +8,7 @@ except ImportError:
 import os
 path = os.getcwd()
 import importlib
+import numpy as np
 Helper = importlib.import_module("Helper", path+"Helper.py")
 Data = importlib.import_module("Data", path+"Data.py")
 class Project:
@@ -26,9 +27,6 @@ class Project:
             self.filters = xmlinfo[13]
             if len(self.variables) > 0:
                 self.Data = Data.Data(self.variables)
-            file=open("/home/martin/aktuell/projImp.txt", "w")
-            file.write(str(self.variables) + "\n\n" + str(self.outputs) +"\n\n" + str(self.filters))
-            file.close()
         else:
             self.name, self.Institution = "", ""
             self.variables, self.outputs = None, None
@@ -395,7 +393,7 @@ class Project:
                 cvi["name"] = c.text.strip()
                 cvi["setto"] = self.misc.str_to_float(cvi["setto"])
                 if cvi["setto"] is None:
-                    print("Kalibrierung konnte für", cvi["name"],"nicht definiert werden. Der angegebene Wert für \"setto\" konnte nicht in Zah konvertiert werden.")
+                    print("Kalibrierung konnte für", cvi["name"],"nicht definiert werden. Der angegebene Wert für \"setto\" konnte nicht in Zahl konvertiert werden.")
                 if "getvalue" not in cvi.keys():
                     cvi["getvalue"] = True
                 else:
@@ -449,7 +447,7 @@ class Project:
                         startstop["stop_value"] = self.misc.str_to_float(st.text)
                         if startstop["stop_value"] is not None:
                             startstop["stop_variable"] = var
-                            startstop["stop_button"] =False
+                            startstop["stop_button"] = False
                 except:
                     pass
         except:
@@ -539,6 +537,11 @@ class Project:
                 return v["ardCol"]
         return -1
     
+    def getStopVariableCol(self):
+        if self.control["stop_button"] or self.control["stop_after"]:
+            return -1, -1
+        return self.getArduinoColumn(self.control["stop_variable"]), self.control["stop_value"]
+    
     def ManualArduinoVariables(self):
         rv = {"manual": [], "arduino": []}
         live = 0
@@ -561,8 +564,6 @@ class Project:
     
     def applyFilters(self):
         for f in self.filters:
-            print(str(f))
-            print("crop" in self.Data.filter.keys())
             bo = None
             if "basedon" in f.keys():
                 bo = f["basedon"]
@@ -763,6 +764,21 @@ class Project:
         if "exp" in oinfo["fit"]["type"]:
             dec = "damped" in oinfo["fit"]["type"]
             fitinfo = self.Data.fit_exp(x_values, y_values, decay=dec)
+        sd, rt = None, None
+        if "sigdit" in oinfo.keys():
+            sd = oinfo["sigdit"]
+        elif "round" in oinfo.keys():
+            rt = oinfo["round"]
+        if sd is not None or rt is not None:
+            for k in fitinfo.keys():
+                if str(k) not in ["xfit", "yfit", "envel1", "envel2"]:
+                    if type(fitinfo[k]) is np.ndarray:
+                        fitinfo[k] = fitinfo[k].tolist()
+                    if type(fitinfo[k]) is list:
+                        for i in range(len(fitinfo[k])):
+                            fitinfo[k][i] = self.misc.rounddigits(fitinfo[k][i], rt, sd)
+                    else:
+                        fitinfo[k] = self.misc.rounddigits(fitinfo[k], rt, sd)
         return fitinfo
     
     def var_unit(self, varname):
