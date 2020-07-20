@@ -1,10 +1,10 @@
+import os
+import sys
+from time import time, sleep
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
-from time import time, sleep
-from threading import Event
-from PyQt5.QtGui import QIcon
-import sys
-import os
+from shutil import copy2
 serial_import = False
 try:
 	from serial import Serial
@@ -87,6 +87,11 @@ class GUI(QtWidgets.QMainWindow):
 		self.ImportRawFromFile.setShortcut("Ctrl+R")
 		self.ImportRawFromFile.setDisabled(True)
 		
+		self.saveRawFile_action = QtWidgets.QAction("RAW-Datei speichern", self)
+		self.saveRawFile_action.triggered.connect(self.saveRawFile)
+		self.saveRawFile_action.setShortcut("Ctrl+S")
+		self.saveRawFile_action.setDisabled(True)
+		
 		menuebar = self.menuBar()
 		projectMenue = menuebar.addMenu("Projekt")
 		projectMenue.addAction(self.loadProject)
@@ -94,6 +99,7 @@ class GUI(QtWidgets.QMainWindow):
 		projectMenue.addAction(self.showVariables)
 		rawMenue = menuebar.addMenu("RAW Daten")
 		rawMenue.addAction(self.ImportRawFromFile)
+		rawMenue.addAction(self.saveRawFile_action)
 		
 		
 		#buttons
@@ -403,6 +409,7 @@ class GUI(QtWidgets.QMainWindow):
 		except:
 			pass
 		if self.MeasureMode == 0:
+			self.ManualInputButton.setVisible(False)
 			for v in self.manInputFields:
 				v.setVisible(False)
 			for v in self.manInputLabels:
@@ -411,7 +418,10 @@ class GUI(QtWidgets.QMainWindow):
 				if v is not None:
 					v.setVisible(False)
 			for v in self.manErrorLabels:
-				v.setVisible(False)
+				try:
+					v.setVisible(False)
+				except:
+					pass
 		for v in self.LiveValueMeter:
 			v.setVisible(False)
 		for v in self.LiveValueLabel:
@@ -429,6 +439,7 @@ class GUI(QtWidgets.QMainWindow):
 			vT = False
 		self.step = 3
 		self.Project.MeasurementPostProcessing(valTrans=vT)
+		self.saveRawFile_action.setEnabled(True)
 		self.OutputMenu()
 	
 	def Measure(self):
@@ -880,6 +891,30 @@ class GUI(QtWidgets.QMainWindow):
 			msg.setWindowTitle("Protokollfehler")
 			msg.exec_()
 			self.arduinochoose.setEnabled(True)
+	
+	def saveRawFile(self):
+		name = QFileDialog.getOpenFileName(self, "Dateinamen wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")[0]
+		succ = False
+		try:
+			copy2(self.RAWFileName, name)
+			succ = True
+		except:
+			pass
+		if succ:
+			dialog = QtWidgets.QMessageBox()
+			dialog.setIcon(QtWidgets.QMessageBox.Information)
+			dialog.setText("Die RAW-Datei wurde als "+name+" gespeichert.")
+			dialog.setWindowTitle("Datei wurde gespeichert!")
+			dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+			dialog.exec_()
+		else:
+			msg = QtWidgets.QMessageBox()
+			msg.setIcon(QtWidgets.QMessageBox.Critical)
+			msg.setText("Fehler bei der Speicherung.")
+			msg.setInformativeText(
+				"Bitte konpieren Sie die temporäre RAW-Datei "+self.RAWFileName+" manuell.")
+			msg.setWindowTitle("Fehler!")
+			msg.exec_()
 				
 app = QtWidgets.QApplication(sys.argv)
 ex = GUI()

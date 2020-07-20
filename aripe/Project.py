@@ -642,6 +642,8 @@ class Project:
         if oi["type"]=="xlsx":
             wb = xlsxwriter.Workbook(filename)
             sheet = wb.add_worksheet(self.name)
+            nummer = wb.add_format()
+            nummer.set_num_format("#.#")
             error_shift = 0
             if oi["error"]:
                 error_shift = 1
@@ -653,9 +655,9 @@ class Project:
                 if error_shift > 0:
                     sheet.write(0, colindex + 1, columns[col]["name"]+oi["error_column_appendix"])
                 for j in range(lengths[col]):
-                    sheet.write(j+1, colindex, columns[col]["values"][j])
+                    sheet.write(j+1, colindex, columns[col]["values"][j], nummer)
                     if error_shift > 0 and j < elengths[col]:
-                        sheet.write(j+1, colindex+1, columns[col]["error"][j])
+                        sheet.write(j+1, colindex+1, columns[col]["error"][j], nummer)
             wb.close()
             return True, filename
         if oi["type"] == "csv":
