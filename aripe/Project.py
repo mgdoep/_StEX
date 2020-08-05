@@ -588,7 +588,7 @@ class Project:
         for v in self.variables:
             if v["method"] == "arduino":
                 vl.append((v["name"], v["ardCol"]))
-        return self.Data.getValuesFromRawFile(filename, vl, self.ardProtocol)
+        return self.Data.getValuesFromRawFile(filename, vl, self.ardProtocol, seperator=self.ardSeperator)
     
     def _getSigDitRoundTo(self, index):
         sigdit, roundto = -1, -1

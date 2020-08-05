@@ -349,34 +349,39 @@ class GUI(QtWidgets.QMainWindow):
 			file.write(s)
 			file.close()
 			try:
-				cvss = self.cvs.split("\n")[0]
-				if len(cvss) > 0:
-					self.currentArduinoValues=self.cvs.split("\n")[0].split(self.Project.ardSeperator)
-					if self.startValue is None:
-						self.stopValueCol, self.stopValue = self.Project.getStopVariableCol()
-						if self.stopValueCol < 0:
-							self.startValue = 0
-						else:
-							try:
-								if len(self.currentArduinoValues) > self.stopValueCol:
-									self.startValue = self.currentArduinoValues[self.stopValueCol]
-									if self.startValue > self.stopValue:
-										self.stopIfLarger = False
-							except:
-								self.startValue = None
-								self.stopValueCol = None
-					elif self.stopValueCol is not None:
-						if len(self.currentArduinoValues) > self.stopValueCol:
-							if self.stopIfLarger and self.currentArduinoValues[self.stopValueCol] > self.stopValue:
-								self.timer.stop()
-								self.EndMeasure()
-							elif not self.stopIfLarger and self.currentArduinoValues[self.stopValueCol] < self.stopValue:
-								self.timer.stop()
-								self.EndMeasure()
-					self.cvs = ""
-					self.UpDateLiveMeter()
+				cvss = self.cvs.split("\r")[-2]
 			except:
-				pass
+				cvss = ""
+			if len(cvss) > 0:
+				self.currentArduinoValues=cvss.split(self.Project.ardSeperator)
+				"""if self.startValue is None:
+					self.stopValueCol, self.stopValue = self.Project.getStopVariableCol()
+					if self.stopValueCol < 0:
+						self.startValue = 0
+					else:
+						try:
+							if len(self.currentArduinoValues) > self.stopValueCol:
+								self.startValue = self.currentArduinoValues[self.stopValueCol]
+								if self.startValue > self.stopValue:
+									self.stopIfLarger = False
+						except:
+							self.startValue = None
+							self.stopValueCol = None
+				elif self.stopValueCol is not None:
+					if len(self.currentArduinoValues) > self.stopValueCol:
+						if self.stopIfLarger and float(self.currentArduinoValues[self.stopValueCol]) > float(self.stopValue):
+							self.timer.stop()
+							self.EndMeasure()
+						elif not self.stopIfLarger and float(self.currentArduinoValues[self.stopValueCol]) < float(self.stopValue):
+							self.timer.stop()
+							self.EndMeasure()"""
+				self.cvs = ""
+				try:
+					for i in range(self.number_live_values):
+						self.LiveValueMeter[i].setText(self.currentArduinoValues[self.LiveValueColumns[i]])
+				except:
+					pass
+		
 			if self.Project.control["stop_after"]:
 				if self.isRunning:
 					if time()-self.startTime > self.Project.control["stop_time"]+0.2:
@@ -749,9 +754,12 @@ class GUI(QtWidgets.QMainWindow):
 			if fitinfo is not None:
 				plt.plot(fitinfo["xfit"], fitinfo["yfit"], oinfo["fit"]["line"])
 				if oinfo["fit"]["showparameter"]:
-					if oinfo["fit"]["type"] == "poly":
+					"""if oinfo["fit"]["type"] == "poly":
 						fittext = self.Project.getFitText(fitinfo, oinfo["fit"]["type"], x_name, y_name, x_unit, y_unit)
 						self.showText(fittext)
+					"""
+					fittext = self.Project.getFitText(fitinfo, oinfo["fit"]["type"], x_name, y_name, x_unit, y_unit)
+					self.showText(fittext)
 				try:
 					if "envelop" in oinfo["fit"].keys() and oinfo["fit"]["envelop"] is not None and "envel1" in fitinfo.keys():
 						plt.plot(fitinfo["xfit"], fitinfo["envel1"], oinfo["fit"]["envelop"])
@@ -893,7 +901,7 @@ class GUI(QtWidgets.QMainWindow):
 			self.arduinochoose.setEnabled(True)
 	
 	def saveRawFile(self):
-		name = QFileDialog.getOpenFileName(self, "Dateinamen wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")[0]
+		name, _ = QFileDialog.getSaveFileName(self, "Dateinamen wählen", self.Project.StandardFolder, "Arduino Raw (*.raw)")
 		succ = False
 		try:
 			copy2(self.RAWFileName, name)

@@ -217,14 +217,26 @@ class Helper:
         def calc(s2):
             if type(s2) is not str:
                 if type(s2) is float or type(s2) is int:
-                    return float(s2)
+                    try:
+                        return float(s2)
+                    except:
+                        pass
                 return None
             if bool(regex_int.match(s2)):
-                return float(s2)
+                try:
+                    return float(s2)
+                except:
+                    pass
             if bool(regex_eng.match(s2)) and not bool(regex_ealone.match(s2)):
-                return float(s2)
+                try:
+                    return float(s2)
+                except:
+                    pass
             if bool(regex_ger.match(s2)) and not bool(regex_ealone.match(s2)):
-                return float(s2.replace(",", "."))
+                try:
+                    return float(s2.replace(",", "."))
+                except:
+                    pass
             return None
 
         regex_eng = compile(r'^[-+]?\d*\.?\d*[eE]?[-+]?\d*$')

@@ -1250,21 +1250,39 @@ class Data:
     
     """
     
-    def fit_damped_osci(self, t, y):
+    def fit_damped_osci(self, tp, y):
         try:
             from scipy.optimize import leastsq
         except ImportError:
             return None
+        
+        def sign(m):
+            if m < 0:
+                return -1
+            return 1
+        
+        t = np.array(tp, dtype=np.float64)
+        
+        guess_o = np.mean(y)
+        guess_a = max(y) - guess_o
+        
+        vzw = 0
+        last = 0
+        for i in range(len(y) - 1):
+            if sign(y[i] - guess_o) != np.sign(y[i + 1] - guess_o):
+                vzw += 1
+                if i < last + 3 and i > 10:
+                    break
+                last = i
+    
+        guess_w = np.pi * float(vzw) / (t[i] - t[0])
+        guess_p = 0.0
+        #guess_d = np.log((max(y[i // 2:i]) - guess_o) / (guess_a - guess_o)) / (t[0] - t[i // 2])
+        guess_d = -0.5
         rv = {}
         optimize_func = lambda z: z[0] * np.exp(z[1] * t) * np.sin(z[2] * t + z[3]) + z[4] - y
 
-        guess_off = np.mean(y)
-        guess_p = 0
-        guess_o = 1
-        guess_d = 0.02
-        guess_A = 2
-
-        p0 = np.array([guess_A, guess_d, guess_o, guess_p, guess_off])
+        p0 = np.array([guess_a, guess_d, guess_w, guess_p, guess_o])
 
         fit, cov, infodict, errmsg, success = leastsq(optimize_func, p0, full_output=1)
 
